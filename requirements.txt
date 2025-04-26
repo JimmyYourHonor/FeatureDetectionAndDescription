@@ -3,5 +3,5 @@ pillow
 numpy
 matplotlib
 scipy
-pytorch
+torch
 torchvision
