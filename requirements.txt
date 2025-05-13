@@ -5,3 +5,4 @@ matplotlib
 scipy
 torch
 torchvision
+datasets==3.5.1
