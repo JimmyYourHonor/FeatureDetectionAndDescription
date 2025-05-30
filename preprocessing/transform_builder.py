@@ -140,7 +140,7 @@ class FullTransform:
         self.scale = scale
         self.distort = distort
         self.crop_size = crop_size
-        self.n_samples = 5
+        self.n_samples = 3
         RGB_mean = [0.485, 0.456, 0.406]
         RGB_std  = [0.229, 0.224, 0.225]
 
@@ -231,7 +231,7 @@ class FullTransform:
             # Find suitable left and right windows
             trials = 0 # take the best out of few trials
             best = -np.inf, None
-            for _ in range(50*self.n_samples):
+            for _ in range(30*self.n_samples):
                 if trials >= self.n_samples: break # finished!
 
                 # pick a random valid point from the first image
@@ -277,6 +277,7 @@ class FullTransform:
                 img_a = np.zeros(output_size_a[::-1]+(3,), dtype=np.uint8)
                 img_b = np.zeros(output_size_b[::-1]+(3,), dtype=np.uint8)
                 aflow = np.nan * np.ones((2,)+output_size_a[::-1], dtype=np.float32)
+                mask = np.zeros(output_size_a[::-1], dtype=np.uint8)
 
             else:
                 win1, win2 = best[1:]

@@ -38,14 +38,16 @@ if __name__ == '__main__':
     training_args = TrainingArguments(
         output_dir="./image_feature_model",
         learning_rate=1e-4,
-        per_device_train_batch_size=32,
+        per_device_train_batch_size=8,
         num_train_epochs=1,
         weight_decay=0.01,
-        save_strategy="best",
+        dataloader_num_workers=4,
+        save_strategy="epoch",
         logging_dir='./logs',
         logging_steps=100,
         remove_unused_columns=False,
         push_to_hub=False,
+        report_to="none",
     )
     
     trainer = Trainer(
