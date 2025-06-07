@@ -1,5 +1,6 @@
 from preprocessing import *
 from models import *
+from callbacks.weight_analysis_callback import WeightAnalysisCallback
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -37,21 +38,25 @@ if __name__ == '__main__':
     
     training_args = TrainingArguments(
         output_dir="./image_feature_model",
+        optim="adamw_torch",
+        lr_scheduler_type="constant",
         learning_rate=1e-4,
-        per_device_train_batch_size=32,
-        num_train_epochs=1,
-        weight_decay=0.01,
-        save_strategy="best",
+        per_device_train_batch_size=8,
+        num_train_epochs=25,
+        weight_decay=5e-4,
+        dataloader_num_workers=4,
+        save_strategy="epoch",
         logging_dir='./logs',
         logging_steps=100,
         remove_unused_columns=False,
-        push_to_hub=False,
+        report_to="none",
     )
     
     trainer = Trainer(
         model=wrapped_model,
         args=training_args,
         train_dataset=dataset,
+        callbacks=[WeightAnalysisCallback()],
     )
 
     trainer.train()

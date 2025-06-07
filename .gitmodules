@@ -1,0 +1,3 @@
+[submodule "callbacks"]
+	path = callbacks
+	url = https://github.com/JimmyYourHonor/HF_Trainer_Callbacks.git
