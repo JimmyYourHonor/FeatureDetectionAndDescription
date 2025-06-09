@@ -169,13 +169,13 @@ class FullTransform:
                                                example['mask.png']):
             if image is not None:
                 # Synthetic pair
-                output_dict = self.synthetic_transform(image)
+                output_dict = self.synthetic_transform(image.convert('RGB'))
             elif im0 is not None and flow is None:
                 # Still pair
-                output_dict = self.still_transform(im0, im1)
+                output_dict = self.still_transform(im0.convert('RGB'), im1.convert('RGB'))
             elif flow is not None:
                 # Flow pair
-                output_dict = self.flow_transform(im0, im1, flow, mask)
+                output_dict = self.flow_transform(im0.convert('RGB'), im1.convert('RGB'), flow, mask)
             else:
                 raise ValueError("Invalid input data.")
             # Apply scaling and distortion to img_b
@@ -193,6 +193,16 @@ class FullTransform:
             output_size_b = min(img_b.size, self.crop_size)
             img_a = np.array(img_a)
             img_b = np.array(img_b)
+            if len(img_a.shape) != 3:
+              print(img_a.shape)
+              print(img_b.shape)
+              print(aflow.shape)
+              print(mask.shape)
+              if image is not None:
+                import pdb
+                import matplotlib.pyplot as plt
+                plt.imshow(image)
+                pdb.set_trace()
 
             ah,aw,p1 = img_a.shape
             bh,bw,p2 = img_b.shape
