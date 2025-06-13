@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 import datasets
-from transformers import TrainingArguments, Trainer
+from transformers import TrainingArguments
 
 if __name__ == '__main__':
     web_images = datasets.load_dataset('JimmyFu/web_images', split='train')
@@ -32,9 +32,6 @@ if __name__ == '__main__':
         1, CosimLoss(N=16),
         1, PeakyLoss(N=16)
     )
-
-    # Define Wrapped model
-    wrapped_model = ModelLossWrapper(model, loss)
     
     training_args = TrainingArguments(
         output_dir="./image_feature_model",
@@ -52,8 +49,8 @@ if __name__ == '__main__':
         report_to="none",
     )
     
-    trainer = Trainer(
-        model=wrapped_model,
+    trainer = CustomTrainer(
+        model=model,
         args=training_args,
         train_dataset=dataset,
         callbacks=[WeightAnalysisCallback()],
