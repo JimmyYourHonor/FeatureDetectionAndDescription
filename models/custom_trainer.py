@@ -1,8 +1,10 @@
 from transformers import Trainer
 
 class CustomTrainer(Trainer):
+    def set_loss(self, loss):
+        """Set the loss function for the trainer."""
+        self.loss = loss
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        labels = inputs.pop("labels")
         # forward pass
         outputs = model(imgs=[inputs.pop('img_a'),inputs.pop('img_b')])
         # Compute the loss

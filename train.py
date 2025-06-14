@@ -34,7 +34,7 @@ if __name__ == '__main__':
     )
     
     training_args = TrainingArguments(
-        output_dir="./image_feature_model",
+        output_dir="/content/drive/MyDrive/image_feature_model/",
         optim="adamw_torch",
         lr_scheduler_type="constant",
         learning_rate=1e-4,
@@ -55,5 +55,6 @@ if __name__ == '__main__':
         train_dataset=dataset,
         callbacks=[WeightAnalysisCallback()],
     )
+    trainer.set_loss(loss.cuda())
 
     trainer.train()
