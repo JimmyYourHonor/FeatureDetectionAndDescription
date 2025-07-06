@@ -1,4 +1,9 @@
+import torch
+import torch.nn as nn
 from transformers import Trainer
+from typing import Optional, Union, Any
+from transformers.utils import is_sagemaker_mp_enabled, smp_forward_only, smp_nested_concat
+from transformers.trainer_pt_utils import nested_detach
 
 class CustomTrainer(Trainer):
     def set_loss(self, loss):
@@ -13,3 +18,37 @@ class CustomTrainer(Trainer):
     
         # If return_outputs is True, we return the outputs as well
         return (loss, outputs) if return_outputs else loss
+    def prediction_step(
+        self,
+        model: nn.Module,
+        inputs: dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[list[str]] = None,
+    ) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """
+        Perform an evaluation step on `model` using `inputs`. Overide for multiscale evaluation.
+
+        Args:
+            model (`nn.Module`):
+                The model to evaluate.
+            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument `labels`. Check your model's documentation for all accepted arguments.
+            prediction_loss_only (`bool`):
+                Whether or not to return the loss only.
+            ignore_keys (`List[str]`, *optional*):
+                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
+                gathering predictions.
+
+        Return:
+            Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
+            logits and labels (each being optional).
+        """
+       
+        import pdb
+        pdb.set_trace()
+        # if len(logits) == 1:
+        #     logits = logits[0]
+
+        # return (loss, logits, labels)

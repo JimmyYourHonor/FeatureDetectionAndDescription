@@ -16,6 +16,7 @@ if __name__ == '__main__':
     aachen_flow_pairs = datasets.load_dataset('JimmyFu/aachen_flow_pairs', split='train')
     dataset = datasets.interleave_datasets([web_images, aachen_db_images,
                                             aachen_style_transfer, aachen_flow_pairs])
+    eval_dataset = datasets.load_dataset('JimmyFu/hpatches_sequences', split='eval')
     transform = FullTransform()
     dataset.set_transform(transform)
 
@@ -53,8 +54,9 @@ if __name__ == '__main__':
         model=model,
         args=training_args,
         train_dataset=dataset,
+        eval_dataset=eval_dataset,
         callbacks=[WeightAnalysisCallback()],
     )
     trainer.set_loss(loss.cuda())
 
-    trainer.train()
+    # trainer.train()
