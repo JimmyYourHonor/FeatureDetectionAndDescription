@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 from transformers import Trainer
 from typing import Optional, Union, Any
-from transformers.utils import is_sagemaker_mp_enabled, smp_forward_only, smp_nested_concat
-from transformers.trainer_pt_utils import nested_detach
+from models.evaluation.utils import NonMaxSuppression, extract_multiscale
 
 class CustomTrainer(Trainer):
     def set_loss(self, loss):
@@ -45,9 +44,18 @@ class CustomTrainer(Trainer):
             Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
             logits and labels (each being optional).
         """
-       
-        import pdb
-        pdb.set_trace()
+        model.eval()
+        detector = NonMaxSuppression()
+
+        for i in range(1,7):
+            img = inputs[f'{i}.ppm']
+            xys, desc, scores = extract_multiscale( model, img, detector )
+            xys = xys.cpu().numpy()
+            desc = desc.cpu().numpy()
+            scores = scores.cpu().numpy()
+            idxs = scores.argsort()[-5000 or None:]
+            import pdb
+            pdb.set_trace()
         # if len(logits) == 1:
         #     logits = logits[0]
 

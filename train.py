@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from PIL import Image
 import datasets
 from transformers import TrainingArguments
+import torchvision.transforms as T
 
 if __name__ == '__main__':
     web_images = datasets.load_dataset('JimmyFu/web_images', split='train')
@@ -17,6 +18,18 @@ if __name__ == '__main__':
     dataset = datasets.interleave_datasets([web_images, aachen_db_images,
                                             aachen_style_transfer, aachen_flow_pairs])
     eval_dataset = datasets.load_dataset('JimmyFu/hpatches_sequences', split='eval')
+    image_transforms = T.Compose([
+        T.ToTensor(),           # Convert image to PyTorch tensor
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize image
+    ])
+    def apply_transforms(examples):
+        output_examples = {}
+        for i in range(1, 7):
+            output_examples[f'{i}.ppm'] = [image_transforms(img) for img in examples[f'{i}.ppm']]
+            if i != 1:
+                output_examples[f'h_1_{i}'] = [torch.from_numpy(np.array(h)) for h in examples[f'h_1_{i}']]
+        return output_examples
+    eval_dataset.set_transform(apply_transforms)
     transform = FullTransform()
     dataset.set_transform(transform)
 
