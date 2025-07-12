@@ -45,7 +45,7 @@ class CustomTrainer(Trainer):
             logits and labels (each being optional).
         """
         model.eval()
-        detector = NonMaxSuppression()
+        detector = NonMaxSuppression(rel_thr=0.4, rep_thr=0.4)
 
         for i in range(1,7):
             img = inputs[f'{i}.ppm']
