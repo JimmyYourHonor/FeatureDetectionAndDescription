@@ -46,17 +46,16 @@ class CustomTrainer(Trainer):
         """
         model.eval()
         detector = NonMaxSuppression(rel_thr=0.4, rep_thr=0.4)
-
+        logits = []
         for i in range(1,7):
             img = inputs[f'{i}.ppm']
             xys, desc, scores = extract_multiscale( model, img, detector )
-            xys = xys.cpu().numpy()
-            desc = desc.cpu().numpy()
-            scores = scores.cpu().numpy()
             idxs = scores.argsort()[-5000 or None:]
-            import pdb
-            pdb.set_trace()
-        # if len(logits) == 1:
-        #     logits = logits[0]
+            xys = xys[idxs]
+            desc = desc[idxs]
+            scores = scores[idxs]
+            result = torch.cat((xys, desc, scores.unsqueeze(1)), dim=1)
+            logits.append(result)
+        logits = torch.stack(logits, dim=0)
 
-        # return (loss, logits, labels)
+        return (None, logits, None)

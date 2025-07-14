@@ -18,8 +18,5 @@ def compute_metrics(
         Mapping[str, float]: Metrics in a form of dictionary {<metric_name>: <metric_value>}
     """
 
-    predictions, targets = evaluation_results.predictions, evaluation_results.label_ids
-
-    metrics = {k: round(v.item(), 4) for k, v in metrics.items()}
-
-    return metrics
+    import pdb
+    pdb.set_trace()

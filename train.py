@@ -69,7 +69,8 @@ if __name__ == '__main__':
         train_dataset=dataset,
         eval_dataset=eval_dataset,
         callbacks=[WeightAnalysisCallback()],
+        compute_metrics=compute_metrics,
     )
     trainer.set_loss(loss.cuda())
 
-    # trainer.train()
+    trainer.train()
