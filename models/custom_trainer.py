@@ -47,6 +47,7 @@ class CustomTrainer(Trainer):
         model.eval()
         detector = NonMaxSuppression(rel_thr=0.4, rep_thr=0.4)
         logits = []
+        labels = []
         for i in range(1,7):
             img = inputs[f'{i}.ppm']
             xys, desc, scores = extract_multiscale( model, img, detector )
@@ -56,6 +57,8 @@ class CustomTrainer(Trainer):
             scores = scores[idxs]
             result = torch.cat((xys, desc, scores.unsqueeze(1)), dim=1)
             logits.append(result)
+            labels.append(torch.tensor(inputs[f'h_1_{i}']) if i != 1 else torch.eye(3))
         logits = torch.stack(logits, dim=0)
+        labels = torch.stack(labels, dim=0)
 
-        return (None, logits, None)
+        return (None, logits, labels)

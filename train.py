@@ -53,6 +53,8 @@ if __name__ == '__main__':
         lr_scheduler_type="constant",
         learning_rate=1e-4,
         per_device_train_batch_size=8,
+        per_device_eval_batch_size=1,
+        batch_eval_metrics=True,
         num_train_epochs=25,
         weight_decay=5e-4,
         dataloader_num_workers=4,
