@@ -4,7 +4,7 @@ from transformers.modeling_outputs import ModelOutput
 from typing import Mapping
 
 def compute_metrics(
-    evaluation_results: EvalPrediction,
+    evaluation_results: EvalPrediction, compute_result: bool = False
 ) -> Mapping[str, float]:
     """
     Metric computation for feature matching tasks.

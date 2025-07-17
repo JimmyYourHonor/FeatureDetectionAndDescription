@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pdb
 
 class NonMaxSuppression (nn.Module):
     def __init__(self, rel_thr=0.7, rep_thr=0.7):
@@ -13,7 +12,6 @@ class NonMaxSuppression (nn.Module):
     def forward(self, reliability, repeatability, **kw):
         assert len(reliability) == len(repeatability) == 1
         reliability, repeatability = reliability[0], repeatability[0]
-        pdb.set_trace()
         # local maxima
         maxima = (repeatability == self.max_filter(repeatability))
 
@@ -51,7 +49,6 @@ def extract_multiscale( net, img, detector, scale_f=2**0.25,
 
             # normalize the reliability for nms
             # extract maxima and descs
-            pdb.set_trace()
             y,x = detector(**res) # nms
             c = reliability[0,0,y,x]
             q = repeatability[0,0,y,x]
