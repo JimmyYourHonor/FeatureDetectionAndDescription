@@ -8,6 +8,8 @@ err = {thr: 0 for thr in range(1,16)}
 total_pairs = 0
 
 def mnn_matcher(descriptors_a, descriptors_b):
+    if descriptors_a.shape[0] == 0 or descriptors_b.shape[0] == 0:
+        return None
     device = descriptors_a.device
     sim = descriptors_a @ descriptors_b.t()
     nn12 = torch.max(sim, dim=1)[1]
@@ -31,19 +33,17 @@ def compute_metrics(
     Returns:
         Mapping[str, float]: Metrics in a form of dictionary {<metric_name>: <metric_value>}
     """
-
+    global n_feats, n_matches, err, total_pairs
     predications = evaluation_results.predictions
     labels = evaluation_results.label_ids
-    keypoints = predications[:, :2]
-    descriptors = predications[:, 3:131]
-    keypoint_a = keypoints[0]
-    descriptor_a = descriptors[0]
-    n_feats.append(keypoint_a.shape[0])
+    keypoint_a = predications[0][:, :2]
+    descriptor_a = predications[0][:, 2:]
+    n_feats.append(keypoint_a.shape[1])
     for i in range(1, 6):
-        keypoint_b = keypoints[i]
-        descriptor_b = descriptors[i]
+        keypoint_b = predications[i][:, :2]
+        descriptor_b = predications[i][:, 2:]
         matches = mnn_matcher(descriptor_a, descriptor_b)
-        if matches.shape[0] == 0:
+        if matches is None:
             continue
         n_matches.append(matches.shape[0])
         homography = labels[i]
@@ -57,7 +57,7 @@ def compute_metrics(
 
         dist = torch.sqrt(torch.sum((pos_b - pos_b_proj) ** 2, dim=1))
         for thr in range(1,16):
-            err[thr] += torch.mean(dist <= thr)
+            err[thr] += torch.mean((dist <= thr).float())
     total_pairs += 5  # 5 pairs per sequence
     if compute_result:
         mean_matching_acc = 0
@@ -68,7 +68,7 @@ def compute_metrics(
             **{f"error_{thr}": err[thr] / total_pairs for thr in range(1, 16)},
             "MMA": mean_matching_acc,
             "avg_matches": torch.sum(torch.tensor(n_matches)) / total_pairs,
-            "avg_feats": torch.mean(torch.tensor(n_feats)),
-            "min_feats": torch.min(torch.tensor(n_feats)),
-            "max_feats": torch.max(torch.tensor(n_feats)),
+            "avg_feats": torch.mean(torch.tensor(n_feats, dtype=torch.float32)),
+            "min_feats": torch.min(torch.tensor(n_feats, dtype=torch.float32)),
+            "max_feats": torch.max(torch.tensor(n_feats, dtype=torch.float32)),
         }

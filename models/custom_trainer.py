@@ -45,7 +45,7 @@ class CustomTrainer(Trainer):
             logits and labels (each being optional).
         """
         model.eval()
-        detector = NonMaxSuppression(rel_thr=0.4, rep_thr=0.4)
+        detector = NonMaxSuppression()
         logits = []
         labels = []
         for i in range(1,7):
@@ -55,10 +55,9 @@ class CustomTrainer(Trainer):
             xys = xys[idxs]
             desc = desc[idxs]
             scores = scores[idxs]
-            result = torch.cat((xys, desc, scores.unsqueeze(1)), dim=1)
+            result = torch.cat((xys, desc), dim=1)
             logits.append(result)
-            labels.append(inputs[f'h_1_{i}'] if i != 1 else torch.eye(3, device=img.device).unsqueeze(0))
-        logits = torch.stack(logits, dim=0)
-        labels = torch.stack(labels, dim=0)
+            labels.append(inputs[f'h_1_{i}'].to(torch.float32) if i != 1 else torch.eye(3, device=img.device).unsqueeze(0))
+        labels = torch.cat(labels, dim=0)
 
         return (None, logits, labels)
