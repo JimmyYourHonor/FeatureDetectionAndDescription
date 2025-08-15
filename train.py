@@ -58,11 +58,15 @@ if __name__ == '__main__':
         num_train_epochs=25,
         weight_decay=5e-4,
         dataloader_num_workers=4,
-        save_strategy="epoch",
+        eval_strategy="epoch",
+        save_strategy="best",
         logging_dir='./logs',
         logging_steps=100,
         remove_unused_columns=False,
         report_to="none",
+        metric_for_best_model="MMA",
+        # load_best_model_at_end=True,
+        greater_is_better=True,
     )
     
     trainer = CustomTrainer(
@@ -70,7 +74,7 @@ if __name__ == '__main__':
         args=training_args,
         train_dataset=dataset,
         eval_dataset=eval_dataset,
-        callbacks=[WeightAnalysisCallback()],
+        callbacks=[WeightAnalysisCallback(), EvalCallback()],
         compute_metrics=compute_metrics,
     )
     trainer.set_loss(loss.cuda())
