@@ -38,7 +38,7 @@ def compute_metrics(
     labels = evaluation_results.label_ids
     keypoint_a = predications[0][:, :2]
     descriptor_a = predications[0][:, 2:]
-    n_feats.append(keypoint_a.shape[1])
+    n_feats.append(keypoint_a.shape[0])
     for i in range(1, 6):
         keypoint_b = predications[i][:, :2]
         descriptor_b = predications[i][:, 2:]

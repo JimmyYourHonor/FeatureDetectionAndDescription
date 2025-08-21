@@ -67,6 +67,7 @@ if __name__ == '__main__':
         metric_for_best_model="MMA",
         # load_best_model_at_end=True,
         greater_is_better=True,
+        max_grad_norm=0,
     )
     
     trainer = CustomTrainer(
