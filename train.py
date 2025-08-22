@@ -51,7 +51,7 @@ if __name__ == '__main__':
         output_dir="/content/drive/MyDrive/image_feature_model/",
         optim="adamw_torch",
         lr_scheduler_type="constant",
-        learning_rate=1e-4,
+        learning_rate=5e-4,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=1,
         batch_eval_metrics=True,
