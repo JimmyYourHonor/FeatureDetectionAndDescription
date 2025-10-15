@@ -1,4 +1,5 @@
 from .nets.patchnet import Quad_L2Net_ConfCFS, Fast_Quad_L2Net_ConfCFS
+from .nets.convnextv2 import ConvNeXtV2
 from .loss.losses import MultiLoss
 from .loss.reliability_loss import ReliabilityLoss
 from .loss.repeatability_loss import CosimLoss, PeakyLoss

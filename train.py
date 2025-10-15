@@ -9,8 +9,13 @@ from PIL import Image
 import datasets
 from transformers import TrainingArguments
 import torchvision.transforms as T
+import argparse
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str, default='Quad_L2Net_ConfCFS', help='Model Architecture')
+    args = parser.parse_args()
+
     web_images = datasets.load_dataset('JimmyFu/web_images', split='train')
     aachen_db_images = datasets.load_dataset('JimmyFu/aachen_db_images', split='train')
     aachen_style_transfer = datasets.load_dataset('JimmyFu/aachen_style_transfer', split='train')
@@ -34,7 +39,10 @@ if __name__ == '__main__':
     dataset.set_transform(transform)
 
     # Define Model
-    model = Quad_L2Net_ConfCFS()
+    if args.model == 'Quad_L2Net_ConfCFS':
+        model = Quad_L2Net_ConfCFS()
+    elif args.model == 'ConvnextV2':
+        model = ConvNeXtV2()
 
     # Define Sampler
     sampler = NghSampler2(ngh=7, subq=-8, subd=1, pos_d=3, neg_d=5, border=16,
