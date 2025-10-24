@@ -32,9 +32,9 @@ class ConvNeXtV2(BaseNet):
         self.sal = nn.Conv2d(self.backbone.config.hidden_sizes[0], 1, kernel_size=1)
     def forward_one(self, x):
         H, W = x.shape[2], x.shape[3]
+        x = nn.functional.interpolate(x, size=(4*H, 4*W), mode='bilinear')
         output = self.backbone(x).feature_maps
         output = self.decoder(output)
-        output = nn.functional.interpolate(output, size=(H, W), mode='bilinear')
         ureliability = self.clf(output**2)
         urepeatability = self.sal(output**2)
         return self.normalize(output, ureliability, urepeatability)
