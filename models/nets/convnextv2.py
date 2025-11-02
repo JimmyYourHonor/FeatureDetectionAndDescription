@@ -128,11 +128,11 @@ class ConvNeXtV2(BaseNet):
     def __init__(self, model_scale='tiny'):
         super().__init__()
         if model_scale == 'nano':
-            self.config = ConvNextV2Config.from_pretrained("facebook/convnextv2-nano-22k-224")
+            self.config = nano_config()
         if model_scale == 'tiny':
-            self.config = ConvNextV2Config.from_pretrained("facebook/convnextv2-tiny-22k-224")
+            self.config = tiny_config()
         elif model_scale == 'base':
-            self.config = ConvNextV2Config.from_pretrained("facebook/convnextv2-base-22k-224")
+            self.config = base_config()
         self.embbedding = nn.Sequential(
             nn.Conv2d(3, self.config.hidden_sizes[0], kernel_size=1),
             nn.Conv2d(self.config.hidden_sizes[0], self.config.hidden_sizes[0], kernel_size=7, padding=3, groups=self.config.hidden_sizes[0]),
@@ -150,3 +150,44 @@ class ConvNeXtV2(BaseNet):
         ureliability = self.clf(x**2)
         urepeatability = self.sal(x**2)
         return self.normalize(x, ureliability, urepeatability)
+    
+
+def nano_config():
+    return ConvNextV2Config(
+        num_channels=3,
+        patch_size=4,
+        num_stages=4,
+        hidden_sizes=[24, 48, 96, 96],
+        depths=[2, 2, 2, 2],
+        hidden_act="gelu",
+        initializer_range=0.02,
+        layer_norm_eps=1e-12,
+        drop_path_rate=0.0,
+        image_size=192,
+    )
+def tiny_config():
+    return ConvNextV2Config(
+        num_channels=3,
+        patch_size=4,
+        num_stages=4,
+        hidden_sizes=[32, 64, 128, 128],
+        depths=[3, 3, 3, 3],
+        hidden_act="gelu",
+        initializer_range=0.02,
+        layer_norm_eps=1e-12,
+        drop_path_rate=0.0,
+        image_size=192,
+    )
+def base_config():
+    return ConvNextV2Config(
+        num_channels=3,
+        patch_size=4,
+        num_stages=4,
+        hidden_sizes=[64, 128, 256, 256],
+        depths=[3, 4, 6, 3],
+        hidden_act="gelu",
+        initializer_range=0.02,
+        layer_norm_eps=1e-12,
+        drop_path_rate=0.0,
+        image_size=192,
+    )
