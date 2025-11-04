@@ -72,14 +72,16 @@ class ConvNextV2Stage(nn.Module):
         drop_path_rates(`list[float]`): Stochastic depth rates for each layer.
     """
 
-    def __init__(self, config, in_channels, out_channels, kernel_size=2, stride=2, depth=2, drop_path_rates=None):
+    def __init__(self, config, in_channels, out_channels, kernel_size=3, stride=2, depth=2, drop_path_rates=None):
         super().__init__()
 
-        if in_channels != out_channels or stride > 1:
+        if stride > 1:
             self.downsampling_layer = nn.Sequential(
                 ConvNextV2LayerNorm(in_channels, eps=1e-6, data_format="channels_first"),
-                nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, dilation=stride, padding=stride//2),
+                nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, dilation=stride, padding=stride),
             )
+        elif in_channels != out_channels:
+            self.downsampling_layer = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         else:
             self.downsampling_layer = nn.Identity()
         drop_path_rates = drop_path_rates or [0.0] * depth

@@ -88,4 +88,4 @@ if __name__ == '__main__':
     )
     trainer.set_loss(loss.cuda())
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=True)
