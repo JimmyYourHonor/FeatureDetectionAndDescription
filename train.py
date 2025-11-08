@@ -10,6 +10,7 @@ import datasets
 from transformers import TrainingArguments
 import torchvision.transforms as T
 import argparse
+import os
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -54,9 +55,9 @@ if __name__ == '__main__':
         1, CosimLoss(N=16),
         1, PeakyLoss(N=16)
     )
-    
+    output_dir = "/content/drive/MyDrive/image_feature_model/"
     training_args = TrainingArguments(
-        output_dir="/content/drive/MyDrive/image_feature_model/",
+        output_dir=output_dir,
         optim="adamw_torch",
         lr_scheduler_type="constant",
         learning_rate=5e-4,
@@ -87,5 +88,7 @@ if __name__ == '__main__':
         compute_metrics=compute_metrics,
     )
     trainer.set_loss(loss.cuda())
-
-    trainer.train(resume_from_checkpoint=True)
+    resume_from_checkpoint = False
+    if os.path.isdir(output_dir) and os.listdir(output_dir):
+        resume_from_checkpoint = True
+    trainer.train(resume_from_checkpoint=resume_from_checkpoint)
