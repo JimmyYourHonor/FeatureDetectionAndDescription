@@ -1,6 +1,6 @@
 # from transformers import ConvNextV2Backbone
 from transformers.models.convnextv2.configuration_convnextv2 import ConvNextV2Config
-from transformers.models.convnextv2.modeling_convnextv2 import ConvNextV2LayerNorm, ConvNextV2Layer
+from transformers.models.convnextv2.modeling_convnextv2 import ConvNextV2LayerNorm, ConvNextV2GRN, ConvNextV2DropPath, ACT2FN
 from .patchnet import BaseNet
 import torch
 import torch.nn as nn
@@ -60,6 +60,48 @@ import torch.nn as nn
 #             x = torch.cat([x_up, features[-i-2]], dim=1)
 #             x = layer(x)
 #         return x
+
+class ConvNextV2Layer(nn.Module):
+    """This corresponds to the `Block` class in the original implementation.
+
+    There are two equivalent implementations: [DwConv, LayerNorm (channels_first), Conv, GELU,1x1 Conv]; all in (N, C,
+    H, W) (2) [DwConv, Permute to (N, H, W, C), LayerNorm (channels_last), Linear, GELU, Linear]; Permute back
+
+    The authors used (2) as they find it slightly faster in PyTorch.
+
+    Args:
+        config ([`ConvNextV2Config`]): Model configuration class.
+        dim (`int`): Number of input channels.
+        drop_path (`float`): Stochastic depth rate. Default: 0.0.
+    """
+
+    def __init__(self, config, dim, drop_path=0):
+        super().__init__()
+        # depthwise conv
+        self.dwconv = nn.Conv2d(dim, dim, kernel_size=3, padding=1, groups=dim)
+        self.layernorm = ConvNextV2LayerNorm(dim, eps=1e-6)
+        # pointwise/1x1 convs, implemented with linear layers
+        self.pwconv1 = nn.Linear(dim, 4 * dim)
+        self.act = ACT2FN[config.hidden_act]
+        self.grn = ConvNextV2GRN(4 * dim)
+        self.pwconv2 = nn.Linear(4 * dim, dim)
+        self.drop_path = ConvNextV2DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+
+    def forward(self, hidden_states: torch.FloatTensor) -> torch.Tensor:
+        input = hidden_states
+        x = self.dwconv(hidden_states)
+        # (batch_size, num_channels, height, width) -> (batch_size, height, width, num_channels)
+        x = x.permute(0, 2, 3, 1)
+        x = self.layernorm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.grn(x)
+        x = self.pwconv2(x)
+        # (batch_size, height, width, num_channels) -> (batch_size, num_channels, height, width)
+        x = x.permute(0, 3, 1, 2)
+
+        x = input + self.drop_path(x)
+        return x
 
 class ConvNextV2Stage(nn.Module):
     """ConvNeXTV2 stage, consisting of an optional downsampling layer + multiple residual blocks.
@@ -137,7 +179,7 @@ class ConvNeXtV2(BaseNet):
             self.config = base_config()
         self.embbedding = nn.Sequential(
             nn.Conv2d(3, self.config.hidden_sizes[0], kernel_size=1),
-            nn.Conv2d(self.config.hidden_sizes[0], self.config.hidden_sizes[0], kernel_size=7, padding=3, groups=self.config.hidden_sizes[0]),
+            nn.Conv2d(self.config.hidden_sizes[0], self.config.hidden_sizes[0], kernel_size=3, padding=1, groups=self.config.hidden_sizes[0]),
             ConvNextV2LayerNorm(self.config.hidden_sizes[0], eps=1e-6, data_format="channels_first"),
         )
         self.encoder = ConvNextV2Encoder(self.config)
