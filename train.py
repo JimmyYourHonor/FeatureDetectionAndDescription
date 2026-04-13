@@ -17,16 +17,37 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='Quad_L2Net_ConfCFS', help='Model Architecture')
     args = parser.parse_args()
 
-    web_images = datasets.load_dataset('JimmyFu/web_images', split='train')
-    aachen_db_images = datasets.load_dataset('JimmyFu/aachen_db_images', split='train')
-    aachen_style_transfer = datasets.load_dataset('JimmyFu/aachen_style_transfer', split='train')
-    aachen_flow_pairs = datasets.load_dataset('JimmyFu/aachen_flow_pairs', split='train')
-    dataset = datasets.interleave_datasets([web_images, aachen_db_images,
-                                            aachen_style_transfer, aachen_flow_pairs])
-    eval_dataset = datasets.load_dataset('JimmyFu/hpatches_sequences', split='eval')
+    # Load training datasets with a 90/10 train/val split.
+    # The 10% val split is used for per-epoch evaluation with the same MMA metric
+    # as the final HPatches test, but computed from optical flow correspondences.
+    web_images_train = datasets.load_dataset('JimmyFu/web_images', split='train[:90%]')
+    web_images_val = datasets.load_dataset('JimmyFu/web_images', split='train[90%:]')
+    aachen_db_images_train = datasets.load_dataset('JimmyFu/aachen_db_images', split='train[:90%]')
+    aachen_db_images_val = datasets.load_dataset('JimmyFu/aachen_db_images', split='train[90%:]')
+    aachen_style_transfer_train = datasets.load_dataset('JimmyFu/aachen_style_transfer', split='train[:90%]')
+    aachen_style_transfer_val = datasets.load_dataset('JimmyFu/aachen_style_transfer', split='train[90%:]')
+    aachen_flow_pairs_train = datasets.load_dataset('JimmyFu/aachen_flow_pairs', split='train[:90%]')
+    aachen_flow_pairs_val = datasets.load_dataset('JimmyFu/aachen_flow_pairs', split='train[90%:]')
+
+    dataset = datasets.interleave_datasets([
+        web_images_train, aachen_db_images_train,
+        aachen_style_transfer_train, aachen_flow_pairs_train
+    ])
+
+    # Cap the flow eval set at 1000 samples so per-epoch evaluation is fast
+    flow_eval_dataset = datasets.interleave_datasets([
+        web_images_val, aachen_db_images_val,
+        aachen_style_transfer_val, aachen_flow_pairs_val
+    ])
+    n_eval = min(1000, len(flow_eval_dataset))
+    flow_eval_dataset = flow_eval_dataset.select(range(n_eval))
+
+    # HPatches sequences — used only for the final test after training
+    hpatches_eval_dataset = datasets.load_dataset('JimmyFu/hpatches_sequences', split='eval')
+
     image_transforms = T.Compose([
-        T.ToTensor(),           # Convert image to PyTorch tensor
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize image
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     def apply_transforms(examples):
         output_examples = {}
@@ -35,9 +56,11 @@ if __name__ == '__main__':
             if i != 1:
                 output_examples[f'h_1_{i}'] = [torch.from_numpy(np.array(h)) for h in examples[f'h_1_{i}']]
         return output_examples
-    eval_dataset.set_transform(apply_transforms)
+    hpatches_eval_dataset.set_transform(apply_transforms)
+
     transform = FullTransform()
     dataset.set_transform(transform)
+    flow_eval_dataset.set_transform(transform)
 
     # Define Model
     if args.model == 'Quad_L2Net_ConfCFS':
@@ -47,7 +70,7 @@ if __name__ == '__main__':
 
     # Define Sampler
     sampler = NghSampler2(ngh=7, subq=-8, subd=1, pos_d=3, neg_d=5, border=16,
-                          subd_neg=-8,maxpool_pos=True)
+                          subd_neg=-8, maxpool_pos=True)
 
     # Define loss
     loss = MultiLoss(
@@ -55,7 +78,7 @@ if __name__ == '__main__':
         1, CosimLoss(N=16),
         1, PeakyLoss(N=16)
     )
-    output_dir = "/content/drive/MyDrive/image_feature_model/"
+    output_dir = "/workspace/outputs"
     training_args = TrainingArguments(
         output_dir=output_dir,
         optim="adamw_torch",
@@ -78,12 +101,12 @@ if __name__ == '__main__':
         greater_is_better=True,
         max_grad_norm=0,
     )
-    
+
     trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=flow_eval_dataset,
         callbacks=[WeightAnalysisCallback(), EvalCallback()],
         compute_metrics=compute_metrics,
     )
@@ -92,3 +115,10 @@ if __name__ == '__main__':
     if os.path.isdir(output_dir) and os.listdir(output_dir):
         resume_from_checkpoint = True
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+
+    # Final evaluation on HPatches sequences
+    print("Running final evaluation on HPatches sequences...")
+    hpatches_metrics = trainer.evaluate(eval_dataset=hpatches_eval_dataset)
+    print(f"HPatches MMA:         {hpatches_metrics['eval_MMA']:.4f}")
+    print(f"HPatches avg matches: {hpatches_metrics['eval_avg_matches']:.1f}")
+    print(f"HPatches avg feats:   {hpatches_metrics['eval_avg_feats']:.1f}")

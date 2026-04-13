@@ -48,3 +48,6 @@ temp/
 *.pid
 *.seed
 *.pid.lock
+
+# Pycache
+**/__pycache__/
