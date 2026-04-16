@@ -51,3 +51,8 @@ temp/
 
 # Pycache
 **/__pycache__/
+
+# Claude Code
+CLAUDE.md
+.claude/
+.pytest_cache/

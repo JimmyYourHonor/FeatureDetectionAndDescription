@@ -1,6 +1,7 @@
 from preprocessing import *
 from models import *
 from callbacks.weight_analysis_callback import WeightAnalysisCallback
+from callbacks.hf_bucket_callback import HFBucketCallback
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -107,13 +108,17 @@ if __name__ == '__main__':
         args=training_args,
         train_dataset=dataset,
         eval_dataset=flow_eval_dataset,
-        callbacks=[WeightAnalysisCallback(), EvalCallback()],
+        callbacks=[WeightAnalysisCallback(), EvalCallback(), HFBucketCallback()],
         compute_metrics=compute_metrics,
     )
     trainer.set_loss(loss.cuda())
     resume_from_checkpoint = False
     if os.path.isdir(output_dir) and os.listdir(output_dir):
         resume_from_checkpoint = True
+    else:
+        local_checkpoint = HFBucketCallback.download_latest_checkpoint(output_dir)
+        if local_checkpoint:
+            resume_from_checkpoint = local_checkpoint
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
     # Final evaluation on HPatches sequences
