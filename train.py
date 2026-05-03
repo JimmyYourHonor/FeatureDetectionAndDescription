@@ -2,11 +2,8 @@ from preprocessing import *
 from models import *
 from callbacks.weight_analysis_callback import WeightAnalysisCallback
 from callbacks.hf_bucket_callback import HFBucketCallback
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
-from PIL import Image
 import datasets
 from transformers import TrainingArguments
 import torchvision.transforms as T
@@ -59,7 +56,11 @@ if __name__ == '__main__':
         return output_examples
     hpatches_eval_dataset.set_transform(apply_transforms)
 
-    transform = FullTransform()
+    # CPU pipeline samples geometric params + crop windows without rendering;
+    # GPUWarp performs the actual grid_sample on GPU, then GPUBatchAugment
+    # adds color/noise + normalization. Sources have variable resolution so a
+    # custom collator keeps src_a/src_b as Python lists.
+    transform = ParametricTransform()
     dataset.set_transform(transform)
     flow_eval_dataset.set_transform(transform)
 
@@ -85,7 +86,7 @@ if __name__ == '__main__':
         optim="adamw_torch",
         lr_scheduler_type="constant",
         learning_rate=5e-4,
-        per_device_train_batch_size=8,
+        per_device_train_batch_size=16,
         per_device_eval_batch_size=1,
         batch_eval_metrics=True,
         num_train_epochs=25,
@@ -101,6 +102,7 @@ if __name__ == '__main__':
         # load_best_model_at_end=True,
         greater_is_better=True,
         max_grad_norm=0,
+        bf16=True,
     )
 
     trainer = CustomTrainer(
@@ -108,10 +110,13 @@ if __name__ == '__main__':
         args=training_args,
         train_dataset=dataset,
         eval_dataset=flow_eval_dataset,
+        data_collator=parametric_collator,
         callbacks=[WeightAnalysisCallback(), EvalCallback(), HFBucketCallback()],
         compute_metrics=compute_metrics,
     )
     trainer.set_loss(loss.cuda())
+    trainer.set_warp(GPUWarp().cuda())
+    trainer.set_augment(GPUBatchAugment().cuda())
     resume_from_checkpoint = False
     if os.path.isdir(output_dir) and os.listdir(output_dir):
         resume_from_checkpoint = True

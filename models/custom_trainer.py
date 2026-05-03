@@ -9,7 +9,46 @@ class CustomTrainer(Trainer):
         """Set the loss function for the trainer."""
         self.loss = loss
 
+    def set_augment(self, augment):
+        """Set the GPU batch augment module (see preprocessing.GPUBatchAugment).
+
+        The augment is invoked on `img_a`/`img_b` inputs to convert uint8 →
+        normalized float32 with optional color/noise augmentation. Required
+        for training; eval calls it with training=False.
+        """
+        self.augment = augment
+
+    def set_warp(self, warp):
+        """Set the GPU batch warp module (see preprocessing.GPUWarp).
+
+        The warp is invoked on `src_a`/`src_b` (raw uint8 sources) plus the
+        per-sample `M_a`/`M_b` homographies emitted by ParametricTransform.
+        It produces the cropped uint8 `img_a`/`img_b` consumed by the augment.
+        """
+        self.warp = warp
+
+    def _apply_warp(self, inputs):
+        """Render img_a/img_b from src_a/src_b in-place when present."""
+        if 'src_a' in inputs and 'src_b' in inputs:
+            src_a = inputs.pop('src_a')
+            src_b = inputs.pop('src_b')
+            M_a = inputs.pop('M_a')
+            M_b = inputs.pop('M_b')
+            inputs['img_a'], inputs['img_b'] = self.warp(src_a, src_b, M_a, M_b)
+        return inputs
+
+    def _apply_augment(self, inputs, training: bool):
+        """Run the GPU augment on img_a/img_b in-place if both are present."""
+        if 'img_a' in inputs and 'img_b' in inputs:
+            inputs['img_a'], inputs['img_b'] = self.augment(
+                inputs['img_a'], inputs['img_b'], training=training
+            )
+        return inputs
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        # GPU-side warp (src_a/src_b → img_a/img_b) then augment + normalization
+        inputs = self._apply_warp(inputs)
+        inputs = self._apply_augment(inputs, training=True)
         # forward pass
         outputs = model(imgs=[inputs.pop('img_a'), inputs.pop('img_b')])
         # Compute the loss
@@ -65,7 +104,12 @@ class CustomTrainer(Trainer):
             return (None, logits, labels)
 
         else:
-            # Flow format: one image pair from the training distribution
+            # Flow format: one image pair from the training distribution.
+            # Inputs are raw sources (src_a/src_b + M_a/M_b) emitted by
+            # ParametricTransform. Run warp then augment with training=False
+            # (no noise / color jitter at eval).
+            inputs = self._apply_warp(inputs)
+            inputs = self._apply_augment(inputs, training=False)
             img_a = inputs['img_a']  # (1, 3, H, W)
             img_b = inputs['img_b']  # (1, 3, H, W)
             aflow = inputs['aflow']  # (1, 2, H, W)
