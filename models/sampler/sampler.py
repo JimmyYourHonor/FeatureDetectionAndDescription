@@ -45,9 +45,9 @@ class FullSampler(nn.Module):
         # warp img2 to img1
         grid = self._aflow_to_grid(aflow)
         ones2 = feat2.new_ones(feat2[:,0:1].shape)
-        feat2to1 = F.grid_sample(feat2, grid, mode=self.mode, padding_mode=self.padding)
-        mask2to1 = F.grid_sample(ones2, grid, mode='nearest', padding_mode='zeros')
-        conf2to1 = F.grid_sample(conf2, grid, mode=self.mode, padding_mode=self.padding) \
+        feat2to1 = F.grid_sample(feat2, grid, mode=self.mode, padding_mode=self.padding, align_corners=True)
+        mask2to1 = F.grid_sample(ones2, grid, mode='nearest', padding_mode='zeros', align_corners=True)
+        conf2to1 = F.grid_sample(conf2, grid, mode=self.mode, padding_mode=self.padding, align_corners=True) \
                    if confs else None
         return feat2to1, mask2to1.byte(), conf2to1
 
@@ -61,7 +61,7 @@ class FullSampler(nn.Module):
         XY = XY[None].expand(B, 2, H, W).float()
         
         grid = self._aflow_to_grid(aflow)
-        XY2 = F.grid_sample(XY, grid, mode='bilinear', padding_mode='zeros')
+        XY2 = F.grid_sample(XY, grid, mode='bilinear', padding_mode='zeros', align_corners=True)
         return XY, XY2
 
 

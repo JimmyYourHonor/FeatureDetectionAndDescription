@@ -26,7 +26,7 @@ class CosimLoss (nn.Module):
         # normalize
         sali1, sali2 = repeatability
         grid = FullSampler._aflow_to_grid(aflow)
-        sali2 = F.grid_sample(sali2, grid, mode='bilinear', padding_mode='border')
+        sali2 = F.grid_sample(sali2, grid, mode='bilinear', padding_mode='border', align_corners=True)
 
         patches1 = self.extract_patches(sali1)
         patches2 = self.extract_patches(sali2)

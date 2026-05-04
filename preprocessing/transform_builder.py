@@ -205,11 +205,12 @@ class ParametricTransform:
                         window1(cx, win_size[0] * scale_factor, img_shape[1]))
 
             n_valid = mask.sum()
-            sample_w = mask / (1e-16 + n_valid)
+            # Pre-compute flat indices of valid pixels for O(1) rejection sampling.
+            valid_indices = np.flatnonzero(mask) if n_valid > 0 else None
 
             def sample_valid_pixel():
-                n = np.random.choice(sample_w.size, p=sample_w.ravel())
-                y, x = np.unravel_index(n, sample_w.shape)
+                n = valid_indices[np.random.randint(len(valid_indices))]
+                y, x = np.unravel_index(n, mask.shape)
                 return x, y
 
             trials = 0
@@ -217,6 +218,7 @@ class ParametricTransform:
             for _ in range(30 * self.n_samples):
                 if trials >= self.n_samples: break
                 if n_valid == 0: break
+                if best[0] >= 0.8: break  # good enough — stop early
                 c1x, c1y = sample_valid_pixel()
                 c2x, c2y = (aflow[c1y, c1x] + 0.5).astype(np.int32)
                 if not (0 <= c2x < img_b_W and 0 <= c2y < img_b_H): continue
@@ -278,7 +280,7 @@ class ParametricTransform:
                     afx = Image.fromarray(aflow_w[..., 0]).resize(self.crop_size, Image.NEAREST)
                     afy = Image.fromarray(aflow_w[..., 1]).resize(self.crop_size, Image.NEAREST)
                     aflow_crop = np.stack([np.float32(afx), np.float32(afy)])
-                    mask_crop = np.asarray(
+                    mask_crop = np.array(
                         Image.fromarray(mask_w).resize(self.crop_size, Image.NEAREST)
                     )
                 else:

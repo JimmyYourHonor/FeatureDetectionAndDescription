@@ -116,7 +116,11 @@ class CustomTrainer(Trainer):
 
             logits = []
             for img in [img_a, img_b]:
-                xys, desc, scores = extract_multiscale(model, img, detector)
+                # min_size=0, min_scale=1.0: single-scale extraction at native
+                # resolution. The default min_size=256 would skip 192×192 crops.
+                xys, desc, scores = extract_multiscale(
+                    model, img, detector, min_size=192
+                )
                 idxs = scores.argsort()[-5000 or None:]
                 xys = xys[idxs]
                 desc = desc[idxs]
