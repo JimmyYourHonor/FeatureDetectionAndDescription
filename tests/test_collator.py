@@ -3,7 +3,6 @@ Tests for parametric_collator — the data collator wired into TrainingArguments
 that handles both ParametricTransform output and HPatches eval batches.
 """
 
-import pytest
 import torch
 
 from preprocessing.collator import parametric_collator
@@ -12,36 +11,49 @@ from preprocessing.collator import parametric_collator
 # ── ParametricTransform output ────────────────────────────────────────────────
 
 class TestParametricBatches:
-    def _sample(self, src_size=(64, 64)):
+    def _sample(self, src_size=(64, 64), flow_size=(1, 1)):
         H, W = src_size
+        Hf, Wf = flow_size
         return {
             'src_a': torch.zeros(3, H, W, dtype=torch.uint8),
             'src_b': torch.zeros(3, H, W, dtype=torch.uint8),
-            'M_a': torch.eye(3, dtype=torch.float32),
-            'M_b': torch.eye(3, dtype=torch.float32),
-            'aflow': torch.zeros(2, 16, 16, dtype=torch.float32),
-            'mask': torch.zeros(16, 16, dtype=torch.uint8),
+            'sa2ia': torch.eye(3, dtype=torch.float32),
+            'sb2ib': torch.eye(3, dtype=torch.float32),
+            'M_ab': torch.eye(3, dtype=torch.float32),
+            'img_size': torch.tensor([W, H, W, H], dtype=torch.int32),
+            'mode': 0,
+            'aflow_full': torch.zeros(2, Hf, Wf, dtype=torch.float32),
+            'mask_full': torch.zeros(Hf, Wf, dtype=torch.uint8),
         }
 
-    def test_src_keys_are_kept_as_lists(self):
+    def test_variable_resolution_keys_are_kept_as_lists(self):
+        # src_a/src_b plus aflow_full/mask_full all hold variable per-sample
+        # resolutions and must not be stacked.
         batch = parametric_collator([self._sample(), self._sample()])
-        assert isinstance(batch['src_a'], list)
-        assert isinstance(batch['src_b'], list)
-        assert len(batch['src_a']) == 2
+        for k in ('src_a', 'src_b', 'aflow_full', 'mask_full'):
+            assert isinstance(batch[k], list), f"{k} should be a list"
+            assert len(batch[k]) == 2
 
     def test_fixed_size_keys_are_stacked(self):
         batch = parametric_collator([self._sample(), self._sample()])
-        assert batch['M_a'].shape == (2, 3, 3)
-        assert batch['M_b'].shape == (2, 3, 3)
-        assert batch['aflow'].shape == (2, 2, 16, 16)
-        assert batch['mask'].shape == (2, 16, 16)
+        assert batch['sa2ia'].shape == (2, 3, 3)
+        assert batch['sb2ib'].shape == (2, 3, 3)
+        assert batch['M_ab'].shape == (2, 3, 3)
+        assert batch['img_size'].shape == (2, 4)
+
+    def test_mode_is_kept_as_list_of_ints(self):
+        batch = parametric_collator([self._sample(), self._sample()])
+        assert isinstance(batch['mode'], list)
+        assert batch['mode'] == [0, 0]
 
     def test_variable_resolution_sources_dont_stack(self):
-        s1 = self._sample(src_size=(64, 80))
-        s2 = self._sample(src_size=(96, 32))
+        s1 = self._sample(src_size=(64, 80), flow_size=(1, 1))
+        s2 = self._sample(src_size=(96, 32), flow_size=(64, 80))
         batch = parametric_collator([s1, s2])
         assert batch['src_a'][0].shape == (3, 64, 80)
         assert batch['src_a'][1].shape == (3, 96, 32)
+        assert batch['aflow_full'][0].shape == (2, 1, 1)
+        assert batch['aflow_full'][1].shape == (2, 64, 80)
 
 
 # ── HPatches eval format ──────────────────────────────────────────────────────

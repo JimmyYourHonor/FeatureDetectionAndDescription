@@ -1,7 +1,8 @@
 """
 Tests for ParametricTransform — the CPU-side preprocessor that samples
-geometric transform parameters and crop windows without rendering, leaving
-the actual image warping to GPUWarp on the GPU.
+geometric transform parameters and emits a lightweight per-sample geometric
+chain. Window selection, image rendering, and augmentation all run on GPU
+downstream (see GPUWindowSelect, GPUWarp, GPUBatchAugment).
 
 All tests use synthetic PIL images so no real dataset files are required.
 
@@ -19,6 +20,7 @@ import torch
 from PIL import Image
 
 from preprocessing.transform_builder import ParametricTransform
+from preprocessing.gpu_window_select import MODE_ANALYTIC, MODE_FLOW
 
 
 # ── image factories ───────────────────────────────────────────────────────────
@@ -39,17 +41,25 @@ def mask_image(h: int = 400, w: int = 400, fill: int = 255) -> Image.Image:
 
 # ── ParametricTransform ───────────────────────────────────────────────────────
 
+REQUIRED_KEYS = {
+    "src_a", "src_b",
+    "sa2ia", "sb2ib", "M_ab",
+    "img_size", "mode",
+    "aflow_full", "mask_full",
+}
+
+
 class TestParametricTransform:
     """
-    ParametricTransform is the CPU-side preprocessor that defers image
-    rendering to the GPU. It returns raw uint8 source images, two 3×3
-    M_a/M_b homographies (crop pixel → source pixel), the cropped aflow
-    in float32, and a uint8 mask.
+    ParametricTransform now emits raw uint8 sources, src→img and img_a→img_b
+    homographies, an img_size record, a mode flag, and (in flow mode) the
+    per-pixel flow + mask. It no longer materializes per-image aflow grids
+    or runs the trial-loop crop selection — that's GPUWindowSelect's job.
     """
 
     @pytest.fixture
     def transform(self):
-        return ParametricTransform(crop_size=(192, 192))
+        return ParametricTransform()
 
     @staticmethod
     def _batch(image=None, im0=None, im1=None, flow=None, mask=None):
@@ -61,80 +71,79 @@ class TestParametricTransform:
             "mask.png": [mask],
         }
 
-    def test_synthetic_mode_emits_required_keys(self, transform):
-        batch = self._batch(image=rgb_image(400, 400))
-        out = transform(batch)
-        assert {"src_a", "src_b", "M_a", "M_b", "aflow", "mask"} <= out.keys()
+    def test_synthetic_mode_emits_required_keys_and_mode(self, transform):
+        out = transform(self._batch(image=rgb_image(400, 400)))
+        assert REQUIRED_KEYS <= out.keys()
+        assert out["mode"][0] == MODE_ANALYTIC
 
-    def test_still_mode_emits_required_keys(self, transform):
-        batch = self._batch(im0=rgb_image(400, 400), im1=rgb_image(400, 400))
-        out = transform(batch)
-        assert {"src_a", "src_b", "M_a", "M_b", "aflow", "mask"} <= out.keys()
+    def test_still_mode_emits_required_keys_and_mode(self, transform):
+        out = transform(self._batch(im0=rgb_image(400, 400), im1=rgb_image(400, 400)))
+        assert REQUIRED_KEYS <= out.keys()
+        assert out["mode"][0] == MODE_ANALYTIC
 
-    def test_flow_mode_emits_required_keys(self, transform):
+    def test_flow_mode_emits_required_keys_and_mode(self, transform):
         H = W = 400
-        batch = self._batch(im0=rgb_image(W, H), im1=rgb_image(W, H),
-                            flow=flow_image(H, W), mask=mask_image(H, W))
-        out = transform(batch)
-        assert {"src_a", "src_b", "M_a", "M_b", "aflow", "mask"} <= out.keys()
+        out = transform(self._batch(im0=rgb_image(W, H), im1=rgb_image(W, H),
+                                    flow=flow_image(H, W), mask=mask_image(H, W)))
+        assert REQUIRED_KEYS <= out.keys()
+        assert out["mode"][0] == MODE_FLOW
 
     def test_src_a_is_a_uint8_rgb_tensor(self, transform):
         # src_a is the raw (un-rendered) source — variable resolution.
-        batch = self._batch(image=rgb_image(400, 400))
-        out = transform(batch)
+        out = transform(self._batch(image=rgb_image(400, 400)))
         src_a = out["src_a"][0]
         assert isinstance(src_a, torch.Tensor)
         assert src_a.dtype == torch.uint8
         assert src_a.ndim == 3
         assert src_a.shape[0] == 3
 
-    def test_M_matrices_are_3x3_float32(self, transform):
-        batch = self._batch(image=rgb_image(400, 400))
-        out = transform(batch)
-        M_a, M_b = out["M_a"][0], out["M_b"][0]
-        assert M_a.shape == (3, 3) and M_b.shape == (3, 3)
-        assert M_a.dtype == torch.float32 and M_b.dtype == torch.float32
+    def test_chain_matrices_are_3x3_float32(self, transform):
+        out = transform(self._batch(image=rgb_image(400, 400)))
+        for key in ("sa2ia", "sb2ib", "M_ab"):
+            m = out[key][0]
+            assert m.shape == (3, 3)
+            assert m.dtype == torch.float32
 
-    def test_aflow_and_mask_match_crop_size(self, transform):
-        # aflow is (2, crop_H, crop_W); mask is (crop_H, crop_W).
-        crop_W, crop_H = (192, 192)
-        batch = self._batch(image=rgb_image(400, 400))
-        out = transform(batch)
-        assert out["aflow"][0].shape == (2, crop_H, crop_W)
-        assert out["mask"][0].shape == (crop_H, crop_W)
+    def test_img_size_records_img_a_and_img_b_dims(self, transform):
+        out = transform(self._batch(im0=rgb_image(400, 400), im1=rgb_image(400, 400)))
+        sz = out["img_size"][0]
+        assert sz.shape == (4,)
+        # img_a == im0, so first two entries equal im0 size
+        assert sz[0].item() == 400 and sz[1].item() == 400
 
-    def test_synthetic_M_a_corner_maps_to_source_corner(self, transform):
-        # M_a maps crop pixel-corner (0,0) to a source pixel-corner inside
-        # [0, W_src] × [0, H_src]. This sanity-checks that the chained
-        # Win_a ∘ scale_a^-1 lives entirely inside the source image.
-        batch = self._batch(image=rgb_image(400, 400))
-        out = transform(batch)
-        M_a = out["M_a"][0].numpy()
-        src_a = out["src_a"][0]
-        H_src, W_src = src_a.shape[1], src_a.shape[2]
-        # Apply M_a to the four crop corners
-        corners = np.array([
-            [0, 0, 1],
-            [192, 0, 1],
-            [0, 192, 1],
-            [192, 192, 1],
-        ], dtype=np.float64).T
-        src_corners = M_a @ corners
-        src_corners = src_corners[:2] / src_corners[2:]
-        # All four corners should map inside the source image with a small slack
-        assert (src_corners[0] >= -1e-3).all() and (src_corners[0] <= W_src + 1e-3).all()
-        assert (src_corners[1] >= -1e-3).all() and (src_corners[1] <= H_src + 1e-3).all()
+    def test_flow_mode_carries_real_flow_and_mask_at_img_a_resolution(self, transform):
+        H, W = 320, 480
+        out = transform(self._batch(
+            im0=rgb_image(W, H), im1=rgb_image(W, H),
+            flow=flow_image(H, W), mask=mask_image(H, W),
+        ))
+        af = out["aflow_full"][0]
+        mk = out["mask_full"][0]
+        assert af.shape == (2, H, W) and af.dtype == torch.float32
+        assert mk.shape == (H, W) and mk.dtype == torch.uint8
 
-    def test_still_mode_M_a_is_identity_window(self, transform):
-        # In still mode, src_a == im0 with no transform; M_a is just Win_a.
-        # That means the rotational/perspective parts of M_a must be zero
-        # (only a 2D scale + translation).
-        batch = self._batch(im0=rgb_image(400, 400), im1=rgb_image(400, 400))
-        out = transform(batch)
-        M_a = out["M_a"][0].numpy()
-        # Off-diagonal upper 2x2 entries and the bottom row must be zero.
-        assert M_a[0, 1] == pytest.approx(0.0)
-        assert M_a[1, 0] == pytest.approx(0.0)
-        assert M_a[2, 0] == pytest.approx(0.0)
-        assert M_a[2, 1] == pytest.approx(0.0)
-        assert M_a[2, 2] == pytest.approx(1.0)
+    def test_analytic_mode_emits_aflow_placeholder(self, transform):
+        # In analytic modes M_ab carries the mapping; aflow_full / mask_full
+        # are tiny placeholders so the collator can still treat them uniformly.
+        out = transform(self._batch(image=rgb_image(400, 400)))
+        af = out["aflow_full"][0]
+        mk = out["mask_full"][0]
+        assert af.shape == (2, 1, 1)
+        assert mk.shape == (1, 1)
+
+    def test_still_mode_sa2ia_is_identity(self, transform):
+        # Still mode keeps img_a == im0 unchanged, so src_a→img_a is identity.
+        out = transform(self._batch(im0=rgb_image(400, 400), im1=rgb_image(400, 400)))
+        sa2ia = out["sa2ia"][0].numpy()
+        np.testing.assert_allclose(sa2ia, np.eye(3, dtype=np.float32), atol=1e-6)
+
+    def test_flow_mode_M_ab_is_identity_placeholder(self, transform):
+        # Flow mode carries the real img_a→img_b mapping in aflow_full;
+        # M_ab is left as identity so analytic-mode helpers don't trip.
+        H = W = 400
+        out = transform(self._batch(
+            im0=rgb_image(W, H), im1=rgb_image(W, H),
+            flow=flow_image(H, W), mask=mask_image(H, W),
+        ))
+        M_ab = out["M_ab"][0].numpy()
+        np.testing.assert_allclose(M_ab, np.eye(3, dtype=np.float32), atol=1e-6)

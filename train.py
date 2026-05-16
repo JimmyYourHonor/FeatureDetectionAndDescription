@@ -56,10 +56,12 @@ if __name__ == '__main__':
         return output_examples
     hpatches_eval_dataset.set_transform(apply_transforms)
 
-    # CPU pipeline samples geometric params + crop windows without rendering;
-    # GPUWarp performs the actual grid_sample on GPU, then GPUBatchAugment
-    # adds color/noise + normalization. Sources have variable resolution so a
-    # custom collator keeps src_a/src_b as Python lists.
+    # CPU pipeline samples only geometric params (scales, tilts) — no
+    # rendering, no window selection, no full-image aflow. GPUWindowSelect
+    # picks crop windows on GPU, GPUWarp performs grid_sample, then
+    # GPUBatchAugment adds color/noise + normalization. Sources have variable
+    # resolution so a custom collator keeps src_a/src_b/aflow_full/mask_full
+    # as Python lists.
     transform = ParametricTransform()
     dataset.set_transform(transform)
     flow_eval_dataset.set_transform(transform)
@@ -94,7 +96,6 @@ if __name__ == '__main__':
         dataloader_num_workers=4,
         eval_strategy="epoch",
         save_strategy="best",
-        logging_dir='./logs',
         logging_steps=100,
         remove_unused_columns=False,
         report_to="none",
@@ -111,19 +112,30 @@ if __name__ == '__main__':
         train_dataset=dataset,
         eval_dataset=flow_eval_dataset,
         data_collator=parametric_collator,
-        callbacks=[WeightAnalysisCallback(), EvalCallback(), HFBucketCallback()],
+        callbacks=[WeightAnalysisCallback(), EvalCallback(), HFBucketCallback(type(model).__name__)],
         compute_metrics=compute_metrics,
     )
     trainer.set_loss(loss.cuda())
+    trainer.set_window_select(GPUWindowSelect().cuda())
     trainer.set_warp(GPUWarp().cuda())
     trainer.set_augment(GPUBatchAugment().cuda())
     resume_from_checkpoint = False
     if os.path.isdir(output_dir) and os.listdir(output_dir):
         resume_from_checkpoint = True
     else:
-        local_checkpoint = HFBucketCallback.download_latest_checkpoint(output_dir)
+        local_checkpoint = HFBucketCallback.download_latest_checkpoint(output_dir, type(model).__name__)
         if local_checkpoint:
             resume_from_checkpoint = local_checkpoint
+
+    if resume_from_checkpoint:
+        from transformers.trainer_utils import get_last_checkpoint
+        ckpt_path = resume_from_checkpoint if isinstance(resume_from_checkpoint, str) else get_last_checkpoint(output_dir)
+        id_file = os.path.join(ckpt_path, "wandb_run_id.txt") if ckpt_path else None
+        if id_file and os.path.isfile(id_file):
+            with open(id_file) as f:
+                os.environ["WANDB_RUN_ID"] = f.read().strip()
+            os.environ["WANDB_RESUME"] = "must"
+
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
     # Final evaluation on HPatches sequences

@@ -22,10 +22,35 @@ class CustomTrainer(Trainer):
         """Set the GPU batch warp module (see preprocessing.GPUWarp).
 
         The warp is invoked on `src_a`/`src_b` (raw uint8 sources) plus the
-        per-sample `M_a`/`M_b` homographies emitted by ParametricTransform.
+        per-sample `M_a`/`M_b` homographies produced by GPUWindowSelect.
         It produces the cropped uint8 `img_a`/`img_b` consumed by the augment.
         """
         self.warp = warp
+
+    def set_window_select(self, window_select):
+        """Set the GPU window-selection module (see preprocessing.GPUWindowSelect).
+
+        Consumes the lightweight per-sample chain matrices emitted by
+        ParametricTransform (`sa2ia`/`sb2ib`/`M_ab`/`img_size`/`mode` plus
+        flow tensors), runs the trial-loop crop selection on GPU, and
+        produces the per-sample `M_a`/`M_b`/`aflow`/`mask` tensors that
+        GPUWarp + the loss expect.
+        """
+        self.window_select = window_select
+
+    def _apply_window_select(self, inputs):
+        """Run window selection in-place when ParametricTransform outputs are present."""
+        if 'sa2ia' in inputs:
+            M_a, M_b, aflow, mask = self.window_select(
+                inputs.pop('sa2ia'), inputs.pop('sb2ib'), inputs.pop('M_ab'),
+                inputs.pop('img_size'), inputs.pop('mode'),
+                inputs.pop('aflow_full'), inputs.pop('mask_full'),
+            )
+            inputs['M_a'] = M_a
+            inputs['M_b'] = M_b
+            inputs['aflow'] = aflow
+            inputs['mask'] = mask
+        return inputs
 
     def _apply_warp(self, inputs):
         """Render img_a/img_b from src_a/src_b in-place when present."""
@@ -46,7 +71,8 @@ class CustomTrainer(Trainer):
         return inputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        # GPU-side warp (src_a/src_b → img_a/img_b) then augment + normalization
+        # GPU-side window selection → warp → augment + normalization
+        inputs = self._apply_window_select(inputs)
         inputs = self._apply_warp(inputs)
         inputs = self._apply_augment(inputs, training=True)
         # forward pass
@@ -105,9 +131,10 @@ class CustomTrainer(Trainer):
 
         else:
             # Flow format: one image pair from the training distribution.
-            # Inputs are raw sources (src_a/src_b + M_a/M_b) emitted by
-            # ParametricTransform. Run warp then augment with training=False
-            # (no noise / color jitter at eval).
+            # Inputs are the lightweight per-sample geometric chain emitted
+            # by ParametricTransform. Run window selection → warp → augment
+            # with training=False (no noise / color jitter at eval).
+            inputs = self._apply_window_select(inputs)
             inputs = self._apply_warp(inputs)
             inputs = self._apply_augment(inputs, training=False)
             img_a = inputs['img_a']  # (1, 3, H, W)

@@ -13,7 +13,7 @@ on ``TrainingArguments`` for both training and evaluation datasets.
 import torch
 
 
-_LIST_KEYS = ('src_a', 'src_b')
+_LIST_KEYS = ('src_a', 'src_b', 'aflow_full', 'mask_full')
 
 
 def parametric_collator(features):
