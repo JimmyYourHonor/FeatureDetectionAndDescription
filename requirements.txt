@@ -1,11 +1,12 @@
 tqdm==4.67.1
 boto3==1.42.88
 pillow==12.2.0
-numpy==1.26.4
+numpy==2.2.6
 matplotlib==3.9.2
 scipy==1.13.1
-torch==2.6.0
-torchvision==0.21.0
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
 datasets==4.8.4
 wandb==0.18.7
 transformers==5.5.4

@@ -43,8 +43,8 @@ class MultiLoss (nn.Module):
                 l = l, {loss_func.name:l}
             cum_loss = cum_loss + weight * l[0]
             for key,val in l[1].items():
-                d['loss_'+key] = float(val)
-        d['loss'] = float(cum_loss)
+                d['loss_'+key] = float(val.detach()) if isinstance(val, torch.Tensor) else float(val)
+        d['loss'] = float(cum_loss.detach()) if isinstance(cum_loss, torch.Tensor) else float(cum_loss)
         return cum_loss, d
 
 

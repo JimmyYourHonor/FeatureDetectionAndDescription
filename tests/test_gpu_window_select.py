@@ -109,3 +109,71 @@ class TestEmptyMaskFallback:
         assert torch.equal(M_a[0], torch.eye(3))
         assert torch.isnan(aflow).all()
         assert (mask == 0).all()
+
+
+# ── Phase B specifics ─────────────────────────────────────────────────────────
+
+class TestMixedModeBatch:
+    """Phase B batches analytic items across the batch axis and loops flow
+    items per-item. Mixed batches must keep per-item outputs aligned."""
+
+    def test_mixed_batch_preserves_per_item_outputs(self, select):
+        """A two-item batch — one analytic with identity M_ab, one flow with
+        zero mask — should produce non-degenerate output for the analytic
+        item and degenerate output for the flow item, in the right slots."""
+        torch.manual_seed(0)
+        # Item 0: analytic, identity M_ab — should succeed.
+        # Item 1: flow, zero mask — should fall back to degenerate.
+        sa2ia = torch.eye(3).repeat(2, 1, 1)
+        sb2ib = torch.eye(3).repeat(2, 1, 1)
+        M_ab = torch.eye(3).repeat(2, 1, 1)
+        img_size = torch.tensor([[400, 400, 400, 400], [128, 128, 128, 128]],
+                                 dtype=torch.int32)
+        mode = [MODE_ANALYTIC, MODE_FLOW]
+        aflow_full = [torch.zeros(2, 1, 1), torch.zeros(2, 128, 128)]
+        mask_full = [torch.ones(1, 1, dtype=torch.uint8),
+                     torch.zeros(128, 128, dtype=torch.uint8)]
+
+        M_a, M_b, aflow, mask = select(sa2ia, sb2ib, M_ab, img_size,
+                                        mode, aflow_full, mask_full)
+        # Item 0 (analytic): non-degenerate.
+        assert mask[0].any()
+        assert not torch.isnan(aflow[0]).all()
+        # Item 1 (flow, empty mask): degenerate.
+        assert torch.equal(M_a[1], torch.eye(3))
+        assert torch.isnan(aflow[1]).all()
+        assert (mask[1] == 0).all()
+
+
+class TestBatchIndependence:
+    """The vectorized analytic path must not bleed state across items in a
+    batch — perturbing other items' M_ab/img_size must not change this
+    item's output (a single shared torch.rand consumes the same RNG stream
+    in both runs, so c1x/c1y are identical; scoring uses only this item's
+    M_ab via the per-item gather)."""
+
+    def test_other_items_dont_affect_this_item(self, select):
+        sa2ia = torch.eye(3).repeat(3, 1, 1)
+        sb2ib = torch.eye(3).repeat(3, 1, 1)
+        img_size = torch.tensor([[400, 400, 400, 400]] * 3, dtype=torch.int32)
+        mode = [MODE_ANALYTIC] * 3
+        aflow_full = [torch.zeros(2, 1, 1) for _ in range(3)]
+        mask_full = [torch.ones(1, 1, dtype=torch.uint8) for _ in range(3)]
+
+        M_ab = torch.eye(3).repeat(3, 1, 1)
+        torch.manual_seed(7)
+        out_a = select(sa2ia, sb2ib, M_ab, img_size, mode, aflow_full, mask_full)
+
+        # Perturb items 1 and 2 only. Item 0's M_ab is unchanged.
+        M_ab_alt = M_ab.clone()
+        M_ab_alt[1] = torch.tensor([[0.7, 0.0, 10.0],
+                                     [0.0, 0.7, -5.0],
+                                     [0.0, 0.0, 1.0]])
+        M_ab_alt[2] = torch.tensor([[1.0, 0.3, 0.0],
+                                     [0.0, 1.0, 0.0],
+                                     [0.0, 0.0, 1.0]])
+        torch.manual_seed(7)
+        out_b = select(sa2ia, sb2ib, M_ab_alt, img_size, mode, aflow_full, mask_full)
+
+        for tensor_a, tensor_b in zip(out_a, out_b):
+            torch.testing.assert_close(tensor_a[0], tensor_b[0])
