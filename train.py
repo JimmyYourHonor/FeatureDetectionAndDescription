@@ -134,7 +134,7 @@ if __name__ == '__main__':
         if id_file and os.path.isfile(id_file):
             with open(id_file) as f:
                 os.environ["WANDB_RUN_ID"] = f.read().strip()
-            os.environ["WANDB_RESUME"] = "must"
+            os.environ["WANDB_RESUME"] = "allow"
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
