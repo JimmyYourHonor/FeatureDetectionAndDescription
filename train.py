@@ -121,7 +121,7 @@ if __name__ == '__main__':
     trainer.set_warp(GPUWarp().cuda())
     trainer.set_augment(GPUBatchAugment().cuda())
     resume_from_checkpoint = False
-    if os.path.isdir(output_dir) and os.isfile(os.path.join(output_dir, "checkpoint-latest")):
+    if os.path.isdir(output_dir) and os.path.isfile(os.path.join(output_dir, "checkpoint-latest")):
         resume_from_checkpoint = output_dir + "/checkpoint-latest"  # Automatically resume from latest checkpoint if output_dir exists
     else:
         local_checkpoint = HFBucketCallback.download_latest_checkpoint(output_dir, type(model).__name__)
