@@ -4,6 +4,7 @@ from callbacks.weight_analysis_callback import WeightAnalysisCallback
 from callbacks.hf_bucket_callback import HFBucketCallback
 import numpy as np
 import torch
+from safetensors.torch import load_file
 import datasets
 from transformers import TrainingArguments
 import torchvision.transforms as T
@@ -140,6 +141,11 @@ if __name__ == '__main__':
 
     # Final evaluation on HPatches sequences
     print("Running final evaluation on HPatches sequences...")
+    # Load the best model checkpoint before evaluating on HPatches
+    best_checkpoint = trainer.state.best_model_checkpoint
+    if best_checkpoint:
+        print(f"Loading best model checkpoint from {best_checkpoint} for HPatches evaluation...")
+        trainer.model.load_state_dict(load_file(os.path.join(best_checkpoint, "model.safetensors")))
     hpatches_metrics = trainer.evaluate(eval_dataset=hpatches_eval_dataset)
     print(f"HPatches MMA:         {hpatches_metrics['eval_MMA']:.4f}")
     print(f"HPatches avg matches: {hpatches_metrics['eval_avg_matches']:.1f}")
