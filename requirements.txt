@@ -13,4 +13,5 @@ transformers==5.5.4
 huggingface_hub==1.11.0
 accelerate==1.8.1
 safetensors==0.6.2
+schedulefree>=1.4.0
 tokenizers==0.22.2

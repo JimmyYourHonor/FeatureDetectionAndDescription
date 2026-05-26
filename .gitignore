@@ -56,3 +56,4 @@ temp/
 CLAUDE.md
 .claude/
 .pytest_cache/
+.scratch/

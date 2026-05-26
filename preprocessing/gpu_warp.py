@@ -74,4 +74,5 @@ class GPUWarp(nn.Module):
             src_f, norm_grid,
             mode='bilinear', padding_mode='zeros', align_corners=False,
         )
+        del src_f
         return out.squeeze(0).clamp_(0.0, 255.0).to(torch.uint8)

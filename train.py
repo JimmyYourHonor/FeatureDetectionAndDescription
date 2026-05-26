@@ -72,6 +72,8 @@ if __name__ == '__main__':
         model = Quad_L2Net_ConfCFS()
     elif args.model == 'ConvnextV2':
         model = ConvNeXtV2()
+    elif args.model == 'ViTDense':
+        model = ViTDense()
 
     # Define Sampler
     sampler = NghSampler2(ngh=7, subq=-8, subd=1, pos_d=3, neg_d=5, border=16,
@@ -86,9 +88,10 @@ if __name__ == '__main__':
     output_dir = "/workspace/outputs"
     training_args = TrainingArguments(
         output_dir=output_dir,
-        optim="adamw_torch",
+        optim="schedule_free_adamw",
         lr_scheduler_type="constant",
         learning_rate=5e-4,
+        warmup_steps=500,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=1,
         batch_eval_metrics=True,

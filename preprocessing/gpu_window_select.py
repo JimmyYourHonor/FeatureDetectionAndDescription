@@ -92,6 +92,7 @@ class GPUWindowSelect(nn.Module):
             M_a[i], M_b[i], aflow[i], mask[i] = self._select_one_flow(
                 sa2ia[i], sb2ib[i], W_a, H_a, W_b, H_b, af, mk, device,
             )
+            del af, mk
 
         return M_a, M_b, aflow, mask
 
@@ -314,6 +315,7 @@ class GPUWindowSelect(nn.Module):
         wh = m20 * x_samp + m21 * y_samp + m22
         x2 = (m00 * x_samp + m01 * y_samp + m02) / wh
         y2 = (m10 * x_samp + m11 * y_samp + m12) / wh
+        del wh, x_samp, y_samp
         return self._coverage_score(x2, y2, x2a, y2a, x2b, y2b, mask_in=None)
 
     def _score_flow_vec(self, xa, ya, xb, yb, x2a, y2a, x2b, y2b, af, mk, device):
@@ -353,6 +355,7 @@ class GPUWindowSelect(nn.Module):
         mask_in: (N, K, M, M) bool or None — extra per-sample validity (flow).
         """
         N, K, M, _ = x2.shape
+        device = x2.device
         x2a_b = x2a[:, :, None, None]; y2a_b = y2a[:, :, None, None]
         x2b_b = x2b[:, :, None, None]; y2b_b = y2b[:, :, None, None]
 
@@ -360,18 +363,23 @@ class GPUWindowSelect(nn.Module):
         in_w2 = ((x2i >= x2a_b) & (x2i < x2b_b) &
                  (y2i >= y2a_b) & (y2i < y2b_b))
         valid = in_w2 & mask_in if mask_in is not None else in_w2
+        del in_w2
         score1 = valid.float().mean(dim=(2, 3))
 
         denom_x = (x2b_b - x2a_b).clamp_min(1)
         denom_y = (y2b_b - y2a_b).clamp_min(1)
         qx = (16 * (x2i - x2a_b) // denom_x).clamp_(0, 15)
         qy = (16 * (y2i - y2a_b) // denom_y).clamp_(0, 15)
+        del x2i, y2i
         bucket = qy * 16 + qx
+        del qx, qy
         # Sentinel 256 for invalid samples; one_hot[..., 256] is discarded.
         bucket = torch.where(valid, bucket, torch.full_like(bucket, 256))
+        del valid
         bucket = bucket.reshape(N, K, -1)
-        one_hot = torch.zeros(N, K, 257, device=x2.device, dtype=torch.bool)
+        one_hot = torch.zeros(N, K, 257, device=device, dtype=torch.bool)
         one_hot.scatter_(2, bucket, True)
+        del bucket
         score2 = one_hot[:, :, :256].float().mean(dim=2)
 
         return torch.minimum(score1, score2)
