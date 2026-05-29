@@ -33,13 +33,13 @@ class ViTDense(BaseNet):
 
     def __init__(
         self,
-        patch_size: int = 16,
-        hidden_size: int = 256,
-        num_hidden_layers: int = 12,
-        num_attention_heads: int = 8,
-        out_dim: int = 128,
-        tap_layers: tuple = (2, 5, 8, 11),
-        decoder_channels: int = 256,
+        patch_size: int = 8,
+        hidden_size: int = 160,
+        num_hidden_layers: int = 24,
+        num_attention_heads: int = 4,
+        out_dim: int = 160,
+        tap_layers: tuple = (4, 10, 16, 22),
+        decoder_channels: int = 160,
     ):
         super().__init__()
         self.patch_size = patch_size

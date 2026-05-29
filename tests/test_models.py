@@ -190,9 +190,10 @@ class TestConvNeXtV2:
             norms = desc.norm(p=2, dim=1)
             assert norms.allclose(torch.ones_like(norms), atol=1e-5)
 
-    def test_resolution_preserved_by_dilated_design(self, model):
-        # Stages use dilation instead of striding — no downsampling ever occurs.
-        for H, W in [(32, 32), (48, 64)]:
+    def test_resolution_preserved(self, model):
+        # patch embedding downsamples then bilinear upsample restores original size,
+        # including non-multiples of patch_size=4 via pre-padding.
+        for H, W in [(32, 32), (48, 64), (34, 37)]:
             out = self._forward(model, H=H, W=W)
             assert out["descriptors"][0].shape[-2:] == (H, W), \
                 f"Expected ({H},{W}), got {out['descriptors'][0].shape[-2:]}"
@@ -219,7 +220,7 @@ class TestViTDense:
     Tests for the ViTDense backbone (DPT-style dense ViT).
 
     Small-config rationale:
-      Default ViTDense uses hidden_size=256, num_hidden_layers=12 (~14M params).
+      Default ViTDense uses patch_size=8, hidden_size=128, num_hidden_layers=24 (~7M params).
       For CPU-fast tests we use hidden_size=64, num_hidden_layers=4,
       num_attention_heads=4, tap_layers=(0,1,2,3), decoder_channels=64.
       The out_dim is kept at 128 (the contract value) to exercise the proj conv.

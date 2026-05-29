@@ -4,6 +4,7 @@ from transformers.models.convnextv2.modeling_convnextv2 import ConvNextV2LayerNo
 from .patchnet import BaseNet
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # class ConvNeXtV2(BaseNet):
 #     def __init__(self, model_scale='tiny'):
@@ -163,10 +164,38 @@ class ConvNextV2Encoder(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+    ) -> list:
+        features = []
         for layer_module in self.stages:
             hidden_states = layer_module(hidden_states)
-        return hidden_states
+            features.append(hidden_states)
+        return features
+
+
+class ConvNeXtV2Decoder(nn.Module):
+    """Aggregates all 4 stage features (each at H/patch_size resolution).
+
+    Projects each to a common decoder_channels dim, sums them, then refines
+    with two 3×3 convs. Fusing all stages gives the heads both local
+    (shallow) and global (deep) context for keypoint detection.
+    """
+
+    def __init__(self, hidden_sizes, decoder_channels):
+        super().__init__()
+        self.projs = nn.ModuleList([
+            nn.Conv2d(c, decoder_channels, kernel_size=1, bias=False)
+            for c in hidden_sizes
+        ])
+        self.fuse = nn.Sequential(
+            nn.Conv2d(decoder_channels, decoder_channels, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv2d(decoder_channels, decoder_channels, kernel_size=3, padding=1),
+        )
+
+    def forward(self, features: list) -> torch.Tensor:
+        fused = sum(proj(f) for proj, f in zip(self.projs, features))
+        return self.fuse(fused)
+
 
 class ConvNeXtV2(BaseNet):
     def __init__(self, model_scale='tiny'):
@@ -178,19 +207,26 @@ class ConvNeXtV2(BaseNet):
         elif model_scale == 'base':
             self.config = base_config()
         self.embbedding = nn.Sequential(
-            nn.Conv2d(3, self.config.hidden_sizes[0], kernel_size=1),
-            nn.Conv2d(self.config.hidden_sizes[0], self.config.hidden_sizes[0], kernel_size=3, padding=1, groups=self.config.hidden_sizes[0]),
+            nn.Conv2d(3, self.config.hidden_sizes[0], kernel_size=self.config.patch_size, stride=self.config.patch_size),
             ConvNextV2LayerNorm(self.config.hidden_sizes[0], eps=1e-6, data_format="channels_first"),
         )
         self.encoder = ConvNextV2Encoder(self.config)
-        # reliability classifier
-        self.clf = nn.Conv2d(self.config.hidden_sizes[-1], 2, kernel_size=1)
-        # repeatability classifier
-        self.sal = nn.Conv2d(self.config.hidden_sizes[-1], 1, kernel_size=1)
+        decoder_channels = self.config.hidden_sizes[-1]
+        self.decoder = ConvNeXtV2Decoder(self.config.hidden_sizes, decoder_channels)
+        self.clf = nn.Conv2d(decoder_channels, 2, kernel_size=1)
+        self.sal = nn.Conv2d(decoder_channels, 1, kernel_size=1)
 
     def forward_one(self, x):
+        H, W = x.shape[2], x.shape[3]
+        p = self.config.patch_size
+        pad_h = (p - H % p) % p
+        pad_w = (p - W % p) % p
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, (0, pad_w, 0, pad_h))
         x = self.embbedding(x)
-        x = self.encoder(x)
+        features = self.encoder(x)
+        x = self.decoder(features)
+        x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=False)
         ureliability = self.clf(x**2)
         urepeatability = self.sal(x**2)
         return self.normalize(x, ureliability, urepeatability)
@@ -199,9 +235,9 @@ class ConvNeXtV2(BaseNet):
 def nano_config():
     return ConvNextV2Config(
         num_channels=3,
-        patch_size=4,
+        patch_size=2,
         num_stages=4,
-        hidden_sizes=[24, 48, 96, 96],
+        hidden_sizes=[96, 96, 96, 96],
         depths=[2, 2, 2, 2],
         hidden_act="gelu",
         initializer_range=0.02,
@@ -212,9 +248,9 @@ def nano_config():
 def tiny_config():
     return ConvNextV2Config(
         num_channels=3,
-        patch_size=4,
+        patch_size=2,
         num_stages=4,
-        hidden_sizes=[32, 64, 128, 128],
+        hidden_sizes=[128, 128, 128, 128],
         depths=[3, 3, 3, 3],
         hidden_act="gelu",
         initializer_range=0.02,
@@ -225,9 +261,9 @@ def tiny_config():
 def base_config():
     return ConvNextV2Config(
         num_channels=3,
-        patch_size=4,
+        patch_size=2,
         num_stages=4,
-        hidden_sizes=[64, 128, 256, 256],
+        hidden_sizes=[256, 256, 256, 256],
         depths=[3, 4, 6, 3],
         hidden_act="gelu",
         initializer_range=0.02,
