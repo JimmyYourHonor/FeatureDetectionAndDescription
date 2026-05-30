@@ -6,62 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# class ConvNeXtV2(BaseNet):
-#     def __init__(self, model_scale='tiny'):
-#         super().__init__()
-#         if model_scale == 'nano':
-#             self.backbone = ConvNextV2Backbone.from_pretrained("facebook/convnextv2-nano-22k-224")
-#         if model_scale == 'tiny':
-#             self.backbone = ConvNextV2Backbone.from_pretrained("facebook/convnextv2-tiny-22k-224")
-#         elif model_scale == 'base':
-#             self.backbone = ConvNextV2Backbone.from_pretrained("facebook/convnextv2-base-22k-224")
-
-#         # output all features
-#         self.backbone.out_features = self.backbone.stage_names
-#         # Add layer norms to hidden states of out_features
-#         hidden_states_norms = {}
-#         for stage, num_channels in zip(self.backbone.out_features, self.backbone.channels):
-#             hidden_states_norms[stage] = ConvNextV2LayerNorm(num_channels, data_format="channels_first")
-#         self.backbone.hidden_states_norms = nn.ModuleDict(hidden_states_norms)
-#         # initialize weights and apply final processing
-#         self.backbone.post_init()
-
-#         self.decoder = UnetDecoder(self.backbone.config, drop_path=0.1)
-
-#         # reliability classifier
-#         self.clf = nn.Conv2d(self.backbone.config.hidden_sizes[0], 2, kernel_size=1)
-#         # repeatability classifier
-#         self.sal = nn.Conv2d(self.backbone.config.hidden_sizes[0], 1, kernel_size=1)
-#     def forward_one(self, x):
-#         H, W = x.shape[2], x.shape[3]
-#         x = nn.functional.interpolate(x, size=(4*H, 4*W), mode='bilinear')
-#         output = self.backbone(x).feature_maps
-#         output = self.decoder(output)
-#         ureliability = self.clf(output**2)
-#         urepeatability = self.sal(output**2)
-#         return self.normalize(output, ureliability, urepeatability)
-
-# class UnetDecoder(nn.Module):
-#     def __init__(self, config, drop_path=0.0):
-#         super(UnetDecoder, self).__init__()
-#         in_channels = [config.hidden_sizes[0]] + config.hidden_sizes
-#         self.layers = nn.ModuleList()
-#         for i in range(len(in_channels)-1, 1, -1):
-#             self.layers.append(
-#                 nn.Sequential(
-#                     nn.Conv2d(in_channels[i]+in_channels[i-1], in_channels[i-1], kernel_size=1),
-#                     ConvNextV2Layer(config=config, dim=in_channels[i-1], drop_path=drop_path),
-#                 )
-#             )
-
-#     def forward(self, features):
-#         x = features[-1]
-#         for i, layer in enumerate(self.layers):
-#             x_up = nn.functional.interpolate(x, size=features[-i-2].shape[2:], mode='bilinear')
-#             x = torch.cat([x_up, features[-i-2]], dim=1)
-#             x = layer(x)
-#         return x
-
 class ConvNextV2Layer(nn.Module):
     """This corresponds to the `Block` class in the original implementation.
 
@@ -164,37 +108,10 @@ class ConvNextV2Encoder(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-    ) -> list:
-        features = []
+    ) -> torch.FloatTensor:
         for layer_module in self.stages:
             hidden_states = layer_module(hidden_states)
-            features.append(hidden_states)
-        return features
-
-
-class ConvNeXtV2Decoder(nn.Module):
-    """Aggregates all 4 stage features (each at H/patch_size resolution).
-
-    Projects each to a common decoder_channels dim, sums them, then refines
-    with two 3×3 convs. Fusing all stages gives the heads both local
-    (shallow) and global (deep) context for keypoint detection.
-    """
-
-    def __init__(self, hidden_sizes, decoder_channels):
-        super().__init__()
-        self.projs = nn.ModuleList([
-            nn.Conv2d(c, decoder_channels, kernel_size=1, bias=False)
-            for c in hidden_sizes
-        ])
-        self.fuse = nn.Sequential(
-            nn.Conv2d(decoder_channels, decoder_channels, kernel_size=3, padding=1),
-            nn.GELU(),
-            nn.Conv2d(decoder_channels, decoder_channels, kernel_size=3, padding=1),
-        )
-
-    def forward(self, features: list) -> torch.Tensor:
-        fused = sum(proj(f) for proj, f in zip(self.projs, features))
-        return self.fuse(fused)
+        return hidden_states
 
 
 class ConvNeXtV2(BaseNet):
@@ -211,10 +128,8 @@ class ConvNeXtV2(BaseNet):
             ConvNextV2LayerNorm(self.config.hidden_sizes[0], eps=1e-6, data_format="channels_first"),
         )
         self.encoder = ConvNextV2Encoder(self.config)
-        decoder_channels = self.config.hidden_sizes[-1]
-        self.decoder = ConvNeXtV2Decoder(self.config.hidden_sizes, decoder_channels)
-        self.clf = nn.Conv2d(decoder_channels, 2, kernel_size=1)
-        self.sal = nn.Conv2d(decoder_channels, 1, kernel_size=1)
+        self.clf = nn.Conv2d(self.config.hidden_sizes[-1], 2, kernel_size=1)
+        self.sal = nn.Conv2d(self.config.hidden_sizes[-1], 1, kernel_size=1)
 
     def forward_one(self, x):
         H, W = x.shape[2], x.shape[3]
@@ -224,8 +139,7 @@ class ConvNeXtV2(BaseNet):
         if pad_h > 0 or pad_w > 0:
             x = F.pad(x, (0, pad_w, 0, pad_h))
         x = self.embbedding(x)
-        features = self.encoder(x)
-        x = self.decoder(features)
+        x = self.encoder(x)
         x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=False)
         ureliability = self.clf(x**2)
         urepeatability = self.sal(x**2)
