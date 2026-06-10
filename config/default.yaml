@@ -1,0 +1,91 @@
+# Locked baseline — mirrors current train.py values 1:1.
+# Source of truth for all hyperparameters.
+# DO NOT edit without a corresponding T-1.9 regression-test pass.
+
+model:
+  name: Quad_L2Net_ConfCFS   # train.py:80 — default arg for --model
+  dim: 128                    # Quad_L2Net.__init__ default
+  mchan: 4                    # Quad_L2Net.__init__ default
+  relu22: false               # Quad_L2Net.__init__ default
+  convnext_scale: tiny        # ConvNeXtV2.__init__ default
+
+optim:
+  optim: schedule_free_adamw  # train.py:99
+  lr_scheduler_type: constant # train.py:100
+  learning_rate: 5.0e-4       # train.py:101
+  warmup_steps: 500           # train.py:102
+  weight_decay: 5.0e-4        # train.py:107
+  max_grad_norm: 0.0          # train.py:118
+
+trainer:
+  output_dir: /workspace/outputs           # train.py:96
+  per_device_train_batch_size: 16          # train.py:103
+  per_device_eval_batch_size: 1            # train.py:104
+  num_train_epochs: 25                     # train.py:106
+  eval_strategy: epoch                     # train.py:109
+  save_strategy: best                      # train.py:110
+  logging_steps: 100                       # train.py:111
+  dataloader_num_workers: 4               # train.py:108
+  bf16: true                               # train.py:119
+  report_to: none                          # train.py:113
+  seed: 42                                 # HF Trainer default (not set in train.py)
+  resume: true                             # train.py:135-141 — auto-resume when checkpoint exists
+  batch_eval_metrics: true                 # train.py:97 — per-batch compute_metrics (MetricAccumulator contract)
+
+sampler:
+  ngh: 7         # train.py:87
+  subq: -8       # train.py:87
+  subd: 1        # train.py:87
+  pos_d: 3       # train.py:87
+  neg_d: 5       # train.py:87
+  border: 16     # train.py:88
+  subd_neg: -8   # train.py:88 (named subd_neg in NghSampler2.__init__ as subd_neg)
+  maxpool_pos: true  # train.py:88
+
+loss:
+  reliability:
+    weight: 1.0   # train.py:92 — first weight in MultiLoss
+    params:
+      base: 0.5   # train.py:92 — ReliabilityLoss(sampler, base=0.5, nq=20)
+      nq: 20      # train.py:92
+  cosim:
+    weight: 1.0   # train.py:93
+    params:
+      N: 16       # train.py:93 — CosimLoss(N=16)
+  peaky:
+    weight: 1.0   # train.py:94
+    params:
+      N: 16       # train.py:94 — PeakyLoss(N=16)
+
+augment:
+  brightness: 0.2       # gpu_augment.py:26
+  contrast: 0.2         # gpu_augment.py:27
+  saturation: 0.2       # gpu_augment.py:28
+  hue: 0.1              # gpu_augment.py:29
+  noise_ampl: 25.0      # gpu_augment.py:30
+  rgb_mean:             # gpu_augment.py:31
+    - 0.485
+    - 0.456
+    - 0.406
+  rgb_std:              # gpu_augment.py:32
+    - 0.229
+    - 0.224
+    - 0.225
+
+transform:
+  scale_min: 256          # transform_builder.py:41 — RandomScale(256, 1024, can_upscale=True)
+  scale_max: 1024         # transform_builder.py:41
+  scale_can_upscale: true # transform_builder.py:41
+  tilt_magnitude: 0.5     # transform_builder.py:42 — RandomTilting(0.5)
+
+eval:
+  rel_thr: 0.7    # models/evaluation/utils.py:7 — NonMaxSuppression default
+  rep_thr: 0.7    # models/evaluation/utils.py:8 — NonMaxSuppression default
+  # extract_multiscale defaults (models/evaluation/utils.py:24-27)
+  scale_f: 1.189207115002721   # 2**0.25
+  min_scale: 0.0
+  max_scale: 1.0
+  min_size: 256
+  max_size: 1024
+  # flow-eval override (custom_trainer.py:149)
+  flow_min_size: 192

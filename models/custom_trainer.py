@@ -5,6 +5,10 @@ from typing import Optional, Union, Any
 from models.evaluation.utils import NonMaxSuppression, extract_multiscale
 
 class CustomTrainer(Trainer):
+    def __init__(self, *args, eval_cfg=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.eval_cfg = eval_cfg
+
     def set_loss(self, loss):
         """Set the loss function for the trainer."""
         self.loss = loss
@@ -107,7 +111,16 @@ class CustomTrainer(Trainer):
         Each feature tensor has shape (N, 3 + D): columns are [x, y, scale, descriptors].
         """
         model.eval()
-        detector = NonMaxSuppression()
+        cfg = self.eval_cfg
+        rel_thr   = cfg.rel_thr   if cfg is not None else 0.7
+        rep_thr   = cfg.rep_thr   if cfg is not None else 0.7
+        scale_f   = cfg.scale_f   if cfg is not None else 2**0.25
+        min_scale = cfg.min_scale if cfg is not None else 0.0
+        max_scale = cfg.max_scale if cfg is not None else 1.0
+        min_size  = cfg.min_size  if cfg is not None else 256
+        max_size  = cfg.max_size  if cfg is not None else 1024
+        flow_min_size = cfg.flow_min_size if cfg is not None else 192
+        detector = NonMaxSuppression(rel_thr=rel_thr, rep_thr=rep_thr)
 
         if '1.ppm' in inputs:
             # HPatches format: 6 images per sequence
@@ -115,7 +128,11 @@ class CustomTrainer(Trainer):
             labels = []
             for i in range(1, 7):
                 img = inputs[f'{i}.ppm']
-                xys, desc, scores = extract_multiscale(model, img, detector)
+                xys, desc, scores = extract_multiscale(
+                    model, img, detector,
+                    scale_f=scale_f, min_scale=min_scale, max_scale=max_scale,
+                    min_size=min_size, max_size=max_size,
+                )
                 idxs = scores.argsort()[-5000 or None:]
                 xys = xys[idxs]
                 desc = desc[idxs]
@@ -143,10 +160,12 @@ class CustomTrainer(Trainer):
 
             logits = []
             for img in [img_a, img_b]:
-                # min_size=0, min_scale=1.0: single-scale extraction at native
-                # resolution. The default min_size=256 would skip 192×192 crops.
+                # flow_min_size (default 192) is smaller than the HPatches min_size
+                # (default 256) so small flow-eval crops are not skipped.
                 xys, desc, scores = extract_multiscale(
-                    model, img, detector, min_size=192
+                    model, img, detector,
+                    scale_f=scale_f, min_scale=min_scale, max_scale=max_scale,
+                    min_size=flow_min_size, max_size=max_size,
                 )
                 idxs = scores.argsort()[-5000 or None:]
                 xys = xys[idxs]

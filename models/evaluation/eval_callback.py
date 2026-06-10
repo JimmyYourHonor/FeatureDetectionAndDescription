@@ -1,5 +1,6 @@
 import wandb
 from transformers.integrations import WandbCallback
+from constants import FLOW_PREFIX
 
 class EvalCallback(WandbCallback):
     """
@@ -16,8 +17,14 @@ class EvalCallback(WandbCallback):
 
         # Only plot on the final evaluation at the end of training.
         if state.epoch >= state.num_train_epochs:
+            # With multiple eval datasets, metrics are prefixed per set
+            # (e.g. eval_flow_error_1). Plot the flow val curve; skip the
+            # per-dataset calls (e.g. hpatches) that lack these keys.
+            prefix = FLOW_PREFIX if f"{FLOW_PREFIX}error_1" in metrics else "eval_"
+            if f"{prefix}error_1" not in metrics:
+                return
             xs = [i for i in range(1, 16)]
-            ys = [metrics[f"eval_error_{i}"] for i in range(1, 16)]
+            ys = [metrics[f"{prefix}error_{i}"] for i in range(1, 16)]
             table = wandb.Table(data=[[x, y] for x, y in zip(xs, ys)], columns=["Thresholds", "Precision"])
             self._wandb.log({"Precision vs Recall curve": wandb.plot.line(
                 table, "Thresholds", "Precision",
