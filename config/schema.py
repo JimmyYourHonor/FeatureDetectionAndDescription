@@ -38,6 +38,7 @@ class TrainerCfg:
     seed: int = 42
     resume: bool = True
     batch_eval_metrics: bool = True
+    load_best_model_at_end: bool = False
 
 
 @dataclass
@@ -109,6 +110,7 @@ class EvalCfg:
 
 @dataclass
 class RunCfg:
+    name: str = ""  # config name; defaults to the config file's stem in load_config
     model: ModelCfg = field(default_factory=ModelCfg)
     optim: OptimCfg = field(default_factory=OptimCfg)
     trainer: TrainerCfg = field(default_factory=TrainerCfg)

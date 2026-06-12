@@ -88,6 +88,13 @@ class TestBuildTrainingArgs:
     def test_output_dir(self, cfg):
         assert cfg.trainer.output_dir == "/workspace/outputs"
 
+    def test_load_best_model_at_end(self, cfg):
+        # train.py:104 — load_best_model_at_end was commented out in the baseline,
+        # so the default must be False.  build_training_args passes it through to
+        # TrainingArguments; keeping it False preserves identical behavior to the
+        # pre-refactor train.py while making it config-overridable if 5.5.4 requires it.
+        assert cfg.trainer.load_best_model_at_end is False
+
 
 class TestBuildSampler:
     """build_sampler(cfg) reproduces prior hardcoded NghSampler2 constructor values."""

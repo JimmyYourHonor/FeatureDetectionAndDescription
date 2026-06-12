@@ -12,19 +12,9 @@ def main():
         default="config/default.yaml",
         help="Path to YAML config file (default: config/default.yaml)",
     )
-    parser.add_argument(
-        "--model",
-        default=None,
-        help="Model architecture name; overrides model.name in the config",
-    )
     args, extra = parser.parse_known_args()
 
-    overrides = []
-    if args.model is not None:
-        overrides.append(f"model.name={args.model}")
-    overrides.extend(extra)
-
-    cfg = load_config(args.config, *overrides)
+    cfg = load_config(args.config, *extra)
     datasets = build_datasets(cfg)
     run_training(cfg, datasets)
 

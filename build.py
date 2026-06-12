@@ -152,6 +152,7 @@ def build_training_args(cfg: RunCfg, output_dir_override: str = None) -> Trainin
         max_grad_norm=cfg.optim.max_grad_norm,
         bf16=cfg.trainer.bf16,
         seed=cfg.trainer.seed,
+        load_best_model_at_end=cfg.trainer.load_best_model_at_end,
     )
     kwargs[eval_strat_key] = cfg.trainer.eval_strategy
 
@@ -249,11 +250,10 @@ def build_trainer(
         compute_metrics_fn, _ = make_compute_metrics()
 
     if callbacks is None:
-        model_name = cfg.model.name
         callbacks = [
             WeightAnalysisCallback(),
             EvalCallback(),
-            HFBucketCallback(model_name),
+            HFBucketCallback(cfg.name),
         ]
 
     trainer = CustomTrainer(

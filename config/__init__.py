@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from omegaconf import OmegaConf, DictConfig
 
 from config.schema import RunCfg
@@ -19,6 +21,8 @@ def load_config(path: str, *overrides: str) -> RunCfg:
     if overrides:
         cli_cfg = OmegaConf.from_dotlist(list(overrides))
         merged = OmegaConf.merge(merged, cli_cfg)
+    if not merged.name:
+        merged.name = Path(path).stem
     return OmegaConf.to_object(merged)
 
 

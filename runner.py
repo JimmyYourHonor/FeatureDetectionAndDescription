@@ -105,7 +105,7 @@ def _resolve_checkpoint(cfg, output_dir):
     ):
         return output_dir + "/checkpoint-latest"
     local_checkpoint = HFBucketCallback.download_latest_checkpoint(
-        output_dir, cfg.model.name
+        output_dir, cfg.name
     )
     if local_checkpoint:
         return local_checkpoint
@@ -141,8 +141,12 @@ def _run_final_hpatches(trainer, hpatches_eval_dataset):
 
 def _teardown(trainer):
     import torch
-    try:
-        del trainer.model
-    except AttributeError:
-        pass
+    # Delete all CUDA-resident modules and optimizer state attached to the
+    # trainer. trainer itself is returned to the caller (for state.best_metric
+    # access), so we cannot delete trainer — only its CUDA-heavy attributes.
+    for attr in ("model", "loss", "augment", "warp", "window_select", "optimizer", "lr_scheduler"):
+        try:
+            delattr(trainer, attr)
+        except AttributeError:
+            pass
     torch.cuda.empty_cache()

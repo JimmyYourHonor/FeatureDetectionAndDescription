@@ -2,8 +2,10 @@
 # Source of truth for all hyperparameters.
 # DO NOT edit without a corresponding T-1.9 regression-test pass.
 
+name: ""   # config name (used for HF bucket checkpoint path); blank → derived from config filename stem
+
 model:
-  name: Quad_L2Net_ConfCFS   # train.py:80 — default arg for --model
+  name: Quad_L2Net_ConfCFS   # model architecture
   dim: 128                    # Quad_L2Net.__init__ default
   mchan: 4                    # Quad_L2Net.__init__ default
   relu22: false               # Quad_L2Net.__init__ default
@@ -31,6 +33,7 @@ trainer:
   seed: 42                                 # HF Trainer default (not set in train.py)
   resume: true                             # train.py:135-141 — auto-resume when checkpoint exists
   batch_eval_metrics: true                 # train.py:97 — per-batch compute_metrics (MetricAccumulator contract)
+  load_best_model_at_end: false            # train.py:104 — commented out in baseline; best model loaded manually before HPatches eval
 
 sampler:
   ngh: 7         # train.py:87
