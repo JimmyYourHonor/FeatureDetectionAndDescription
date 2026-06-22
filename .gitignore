@@ -57,3 +57,6 @@ CLAUDE.md
 .claude/
 .pytest_cache/
 .scratch/
+
+# Optuna study files
+**/*.db
